@@ -1,0 +1,39 @@
+# Copy to .github/contribution-gateway.yml on your default branch.
+# Every key is optional; anything left out uses the default shown here.
+
+# "enforce" comments, labels and fails the check. Start with "dry-run" to see what
+# would happen in the workflow logs without touching any pull request.
+mode: enforce
+
+exempt:
+  associations: [OWNER, MEMBER, COLLABORATOR]  # people with write access skip the rules
+  users: []                                    # e.g. [trusted-friend]
+  bots: true                                   # dependabot, renovate, ...
+  labels: [skip-gateway]                       # a maintainer can add this label to wave a PR through
+
+rules:
+  linked_issue:
+    enabled: true
+    require_open: true
+    require_label: ""        # e.g. "accepted": only issues a maintainer has approved count
+
+  open_pr_limit:
+    enabled: true
+    max: 1
+    applies_to: [FIRST_TIME_CONTRIBUTOR, FIRST_TIMER, NONE]
+
+  checklist:
+    enabled: true
+    require_all_checked: true
+    min_items: 0             # set to the number of items in your PR template to stop people deleting it
+
+  disclosure:
+    enabled: false
+    heading: "AI usage"      # the PR description needs a line or section with this text, answered
+
+on_violation:
+  comment: true
+  label: needs-policy-fixes  # "" to disable
+  close: false               # true closes the PR until the contributor fixes it
+  fail_check: true
+  intro: ""                  # optional text at the top of the bot comment

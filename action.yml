@@ -1,0 +1,21 @@
+name: Contribution Gateway
+description: Checks pull requests against a maintainer-written policy (linked issue, newcomer PR limit, checklist, disclosure) with clear, friendly feedback.
+author: contribution-gateway contributors
+branding:
+  icon: shield
+  color: green
+inputs:
+  github-token:
+    description: Token used to read issues and post comments and labels.
+    default: ${{ github.token }}
+  config-path:
+    description: Path of the policy file, read from the pull request's base branch.
+    default: .github/contribution-gateway.yml
+outputs:
+  passed:
+    description: '"true" when the pull request meets the policy or is exempt.'
+  violations:
+    description: JSON list of failed rules, each with `rule` and `message`.
+runs:
+  using: node24
+  main: dist/index.mjs

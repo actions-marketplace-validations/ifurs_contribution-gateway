@@ -1,0 +1,24 @@
+# Copy to .github/workflows/contribution-gateway.yml
+name: Contribution gateway
+
+on:
+  # pull_request_target runs in the context of the base repository, so it can comment on
+  # and label pull requests from forks. It is safe here because this workflow never checks
+  # out or runs the pull request's code. Do not add actions/checkout of the PR head to it.
+  pull_request_target:
+    types: [opened, edited, reopened, synchronize, labeled, unlabeled]
+
+permissions:
+  contents: read        # read the policy file from the base branch
+  issues: write         # comments and labels (PRs are issues in the API)
+  pull-requests: write  # close pull requests, if the policy says to
+
+concurrency:
+  group: contribution-gateway-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: OWNER/contribution-gateway@v0
