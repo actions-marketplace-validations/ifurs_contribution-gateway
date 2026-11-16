@@ -1,4 +1,8 @@
 # Copy to .github/workflows/contribution-gateway.yml
+#
+# Single-workflow mode. Simple, but from December 2, 2026 GitHub blocks pull_request_target
+# in public repositories unless an Actions event policy allows it for this workflow file.
+# For public repositories, prefer the two-workflow setup in examples/two-workflow/.
 name: Contribution gateway
 
 on:

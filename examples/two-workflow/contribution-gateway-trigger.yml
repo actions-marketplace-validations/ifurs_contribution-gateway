@@ -1,0 +1,18 @@
+# Copy to .github/workflows/contribution-gateway-trigger.yml
+#
+# Two-workflow mode, part 1 of 2. Runs for every pull request with a read-only token and
+# does nothing except exist: finishing is the signal that starts part 2. It never needs
+# secrets or write access, so it is safe for pull requests from forks.
+name: Contribution gateway trigger
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize, labeled, unlabeled]
+
+permissions: {}
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "The checks run in the 'Contribution gateway' workflow."

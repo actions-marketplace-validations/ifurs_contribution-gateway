@@ -1838,14 +1838,14 @@ var require_request = __commonJS({
       onResponseStarted() {
         return this[kHandler].onResponseStarted?.();
       }
-      onHeaders(statusCode, headers, resume, statusText) {
+      onHeaders(statusCode, headers, resume, statusText2) {
         assert(!this.aborted);
         assert(!this.completed);
         if (channels.headers.hasSubscribers) {
-          channels.headers.publish({ request: this, response: { statusCode, headers, statusText } });
+          channels.headers.publish({ request: this, response: { statusCode, headers, statusText: statusText2 } });
         }
         try {
-          return this[kHandler].onHeaders(statusCode, headers, resume, statusText);
+          return this[kHandler].onHeaders(statusCode, headers, resume, statusText2);
         } catch (err) {
           this.abort(err);
         }
@@ -1866,12 +1866,12 @@ var require_request = __commonJS({
        * @param {import('node:stream').Duplex} socket
        * @param {string} [statusText]
        */
-      onUpgrade(statusCode, headers, socket, statusText = "") {
+      onUpgrade(statusCode, headers, socket, statusText2 = "") {
         this.onFinally();
         assert(!this.aborted);
         assert(!this.completed);
         if (statusCode !== null) {
-          this.#publishUpgradeHeaders(statusCode, headers, statusText);
+          this.#publishUpgradeHeaders(statusCode, headers, statusText2);
         }
         const result = this[kHandler].onUpgrade(statusCode, headers, socket);
         if (!this.aborted) {
@@ -1888,11 +1888,11 @@ var require_request = __commonJS({
        * @param {(headers: import('node:http2').IncomingHttpHeaders) => Buffer[]} parseHeaders
        * @param {string} [statusText]
        */
-      onUpgradeResponse(statusCode, headers, parseHeaders, statusText = "") {
+      onUpgradeResponse(statusCode, headers, parseHeaders, statusText2 = "") {
         assert(!this.aborted);
         assert(this.completed);
         if (channels.headers.hasSubscribers) {
-          this.#publishUpgradeHeaders(statusCode, parseHeaders(headers), statusText);
+          this.#publishUpgradeHeaders(statusCode, parseHeaders(headers), statusText2);
         }
         this.#publishUpgradeTrailers();
       }
@@ -1911,9 +1911,9 @@ var require_request = __commonJS({
        * @param {Buffer[]} headers
        * @param {string} statusText
        */
-      #publishUpgradeHeaders(statusCode, headers, statusText) {
+      #publishUpgradeHeaders(statusCode, headers, statusText2) {
         if (channels.headers.hasSubscribers) {
-          channels.headers.publish({ request: this, response: { statusCode, headers, statusText } });
+          channels.headers.publish({ request: this, response: { statusCode, headers, statusText: statusText2 } });
         }
       }
       #publishUpgradeTrailers() {
@@ -4141,9 +4141,9 @@ var require_util2 = __commonJS({
     function isErrorLike(object) {
       return object instanceof Error || (object?.constructor?.name === "Error" || object?.constructor?.name === "DOMException");
     }
-    function isValidReasonPhrase(statusText) {
-      for (let i = 0; i < statusText.length; ++i) {
-        const c = statusText.charCodeAt(i);
+    function isValidReasonPhrase(statusText2) {
+      for (let i = 0; i < statusText2.length; ++i) {
+        const c = statusText2.charCodeAt(i);
         if (!(c === 9 || // HTAB
         c >= 32 && c <= 126 || // SP / VCHAR
         c >= 128 && c <= 255)) {
@@ -6070,7 +6070,7 @@ var require_client_h1 = __commonJS({
         }
       }
       onUpgrade(head) {
-        const { upgrade, client, socket, headers, statusCode, statusText } = this;
+        const { upgrade, client, socket, headers, statusCode, statusText: statusText2 } = this;
         assert(upgrade);
         assert(client[kSocket] === socket);
         assert(!socket.destroyed);
@@ -6095,7 +6095,7 @@ var require_client_h1 = __commonJS({
         client[kQueue][client[kRunningIdx]++] = null;
         client.emit("disconnect", client[kUrl], [client], new InformationalError("upgrade"));
         try {
-          request2.onUpgrade(statusCode, headers, socket, statusText);
+          request2.onUpgrade(statusCode, headers, socket, statusText2);
         } catch (error2) {
           util.errorRequest(client, request2, error2);
           util.destroy(socket, error2);
@@ -6103,7 +6103,7 @@ var require_client_h1 = __commonJS({
         client[kResume]();
       }
       onHeadersComplete(statusCode, upgrade, shouldKeepAlive) {
-        const { client, socket, headers, statusText } = this;
+        const { client, socket, headers, statusText: statusText2 } = this;
         if (socket.destroyed) {
           return -1;
         }
@@ -6168,7 +6168,7 @@ var require_client_h1 = __commonJS({
         } else {
           socket[kReset] = true;
         }
-        const pause = request2.onHeaders(statusCode, headers, this.resume, statusText) === false;
+        const pause = request2.onHeaders(statusCode, headers, this.resume, statusText2) === false;
         if (request2.aborted) {
           return -1;
         }
@@ -7499,7 +7499,7 @@ var require_redirect_handler = __commonJS({
       onError(error2) {
         this.handler.onError(error2);
       }
-      onHeaders(statusCode, headers, resume, statusText) {
+      onHeaders(statusCode, headers, resume, statusText2) {
         this.location = this.history.length >= this.maxRedirections || util.isDisturbed(this.opts.body) ? null : parseLocation(statusCode, headers);
         if (this.opts.throwOnMaxRedirect && this.history.length >= this.maxRedirections) {
           if (this.request) {
@@ -7513,7 +7513,7 @@ var require_redirect_handler = __commonJS({
           this.history.push(new URL(this.opts.path, this.opts.origin));
         }
         if (!this.location) {
-          return this.handler.onHeaders(statusCode, headers, resume, statusText);
+          return this.handler.onHeaders(statusCode, headers, resume, statusText2);
         }
         const { origin, pathname, search } = util.parseURL(new URL(this.location, this.opts.origin && new URL(this.opts.path, this.opts.origin)));
         const path = search ? `${pathname}${search}` : pathname;
@@ -14327,13 +14327,13 @@ var require_fetch = __commonJS({
         })();
       }
       try {
-        const { body, status: status2, statusText, headersList, socket } = await dispatch({ body: requestBody });
+        const { body, status: status2, statusText: statusText2, headersList, socket } = await dispatch({ body: requestBody });
         if (socket) {
-          response = makeResponse({ status: status2, statusText, headersList, socket });
+          response = makeResponse({ status: status2, statusText: statusText2, headersList, socket });
         } else {
           const iterator2 = body[Symbol.asyncIterator]();
           fetchParams.controller.next = () => iterator2.next();
-          response = makeResponse({ status: status2, statusText, headersList });
+          response = makeResponse({ status: status2, statusText: statusText2, headersList });
         }
       } catch (err) {
         if (err.name === "AbortError") {
@@ -14457,7 +14457,7 @@ var require_fetch = __commonJS({
             onResponseStarted() {
               timingInfo.finalNetworkResponseStartTime = coarsenedSharedCurrentTime(fetchParams.crossOriginIsolatedCapability);
             },
-            onHeaders(status2, rawHeaders, resume, statusText) {
+            onHeaders(status2, rawHeaders, resume, statusText2) {
               if (status2 < 200) {
                 return;
               }
@@ -14508,7 +14508,7 @@ var require_fetch = __commonJS({
               const onError = this.onError.bind(this);
               resolve({
                 status: status2,
-                statusText,
+                statusText: statusText2,
                 headersList,
                 body: decoders.length ? pipeline(this.body, ...decoders, (err) => {
                   if (err) {
@@ -32250,9 +32250,48 @@ function summarize(evaluation) {
   ].join("\n");
 }
 
+// src/targets.ts
+async function resolveTargets(eventName, payload, inputNumber, lookup) {
+  const requested = inputNumber.trim();
+  if (requested) {
+    const n = Number(requested);
+    if (!Number.isSafeInteger(n) || n < 1) throw new Error(`pull-request input must be a PR number, got "${requested}"`);
+    return { numbers: [n], report: eventName === "pull_request_target" ? "job" : "status" };
+  }
+  if (eventName === "pull_request_target" || eventName === "pull_request") {
+    const n = payload.pull_request?.number;
+    if (!n) return { numbers: [], report: "job", skip: "the event has no pull request" };
+    return { numbers: [n], report: "job" };
+  }
+  if (eventName === "workflow_run") {
+    const run2 = payload.workflow_run;
+    if (!run2) return { numbers: [], report: "status", skip: "the event has no workflow run" };
+    if (run2.event !== "pull_request" && run2.event !== "pull_request_target") {
+      return { numbers: [], report: "status", skip: `the triggering run was for "${run2.event}", not a pull request` };
+    }
+    const listed = (run2.pull_requests ?? []).map((p) => p.number);
+    if (listed.length) return { numbers: [...new Set(listed)], report: "status" };
+    const owner = run2.head_repository?.owner?.login;
+    if (!owner || !run2.head_branch) return { numbers: [], report: "status", skip: "the triggering run has no head branch" };
+    const found = await lookup.findOpenPullRequests(owner, run2.head_branch);
+    if (!found.length) return { numbers: [], report: "status", skip: `no open pull request from ${owner}:${run2.head_branch}` };
+    return { numbers: found, report: "status" };
+  }
+  if (eventName === "workflow_dispatch") {
+    return { numbers: [], report: "status", skip: "manual runs need the pull-request input" };
+  }
+  throw new Error(
+    `"${eventName}" events are not supported; use pull_request_target, or workflow_run with a pull_request trigger workflow`
+  );
+}
+function statusDescription(text) {
+  return text.length <= 140 ? text : `${text.slice(0, 139)}\u2026`;
+}
+
 // src/github.ts
 var MAX_PR_PAGES = 10;
 var status = (e) => e.status;
+var STATUS_CONTEXT = "contribution-gateway";
 var GitHubRepo = class {
   constructor(octokit, owner, repo, host = "github.com", warn = () => {
   }) {
@@ -32279,6 +32318,7 @@ var GitHubRepo = class {
       number: data.number,
       state: data.state,
       baseRef: data.base.ref,
+      headSha: data.head.sha,
       author: data.user.login,
       authorType: data.user.type,
       association: data.author_association,
@@ -32375,27 +32415,43 @@ var GitHubRepo = class {
       if (status(e) !== 404) throw e;
     }
   }
+  async findOpenPullRequests(headOwner, headBranch) {
+    const { data } = await this.octokit.rest.pulls.list({
+      owner: this.owner,
+      repo: this.repo,
+      state: "open",
+      head: `${headOwner}:${headBranch}`,
+      per_page: 10
+    });
+    return data.map((pr) => pr.number);
+  }
+  async setStatus(sha, state, description, targetUrl) {
+    await this.octokit.rest.repos.createCommitStatus({
+      owner: this.owner,
+      repo: this.repo,
+      sha,
+      state,
+      context: STATUS_CONTEXT,
+      description: statusDescription(description),
+      target_url: targetUrl
+    });
+  }
   async closePullRequest(number) {
     await this.octokit.rest.pulls.update({ owner: this.owner, repo: this.repo, pull_number: number, state: "closed" });
   }
 };
 
 // src/main.ts
-async function run() {
-  const number = context2.payload.pull_request?.number;
-  if (!number) {
-    setFailed("contribution-gateway must run on pull_request_target events (it found no pull request in the event).");
-    return;
-  }
-  const token = getInput("github-token", { required: true });
-  const configPath = getInput("config-path") || ".github/contribution-gateway.yml";
-  const { owner, repo } = context2.repo;
-  const host = new URL(context2.serverUrl || "https://github.com").hostname;
-  const gh = new GitHubRepo(getOctokit(token), owner, repo, host, warning);
+function statusText(passed, violations, exemptReason2) {
+  if (exemptReason2) return `Skipped: ${exemptReason2}`;
+  if (passed) return "All contribution checks passed";
+  return `Needs changes: ${violations.map((v) => RULE_TITLES[v.rule]).join(", ")} (see the PR comment)`;
+}
+async function checkPullRequest(gh, number, configPath, report, runUrl) {
   const pr = await gh.getPullRequest(number);
   if (pr.state !== "open") {
     info(`PR #${pr.number} is ${pr.state}; nothing to check.`);
-    return;
+    return null;
   }
   const configText = await gh.readFile(configPath, pr.baseRef);
   if (configText === void 0) info(`No ${configPath} on ${pr.baseRef}; using the default policy.`);
@@ -32403,35 +32459,66 @@ async function run() {
   warnings.forEach((w) => warning(w));
   const result = await evaluate(pr, policy, gh);
   const summary2 = summarize(result);
-  info(summary2);
   const passed = result.violations.length === 0;
-  setOutput("passed", String(passed));
-  setOutput("violations", JSON.stringify(result.violations));
-  await summary.addHeading("Contribution gateway", 3).addCodeBlock(summary2).write();
+  info(`PR #${pr.number}: ${summary2}`);
+  summary.addHeading(`PR #${pr.number}`, 4).addCodeBlock(summary2);
+  const outcome = { number: pr.number, passed, summary: summary2, violations: result.violations, failCheck: policy.on_violation.fail_check };
   if (policy.mode === "dry-run") {
-    info("Dry-run mode: no comments, labels or status changes were made.");
-    return;
+    info("Dry-run mode: no comments, labels or statuses were changed.");
+    return outcome;
   }
   const act = policy.on_violation;
-  try {
-    if (passed) {
-      if (act.comment) await gh.upsertComment(pr.number, passComment(result.exemptReason), false);
-      if (act.label) await gh.setLabel(pr.number, act.label, false, pr.labels);
-      return;
-    }
+  if (passed) {
+    if (act.comment) await gh.upsertComment(pr.number, passComment(result.exemptReason), false);
+    if (act.label) await gh.setLabel(pr.number, act.label, false, pr.labels);
+  } else {
     if (act.comment) await gh.upsertComment(pr.number, failureComment(pr.author, result, policy, act.close), true);
     if (act.label) await gh.setLabel(pr.number, act.label, true, pr.labels);
-    if (act.close) await gh.closePullRequest(pr.number);
+  }
+  if (report === "status") {
+    const state = passed || !act.fail_check ? "success" : "failure";
+    await gh.setStatus(pr.headSha, state, statusText(passed, result.violations, result.exemptReason), runUrl);
+  }
+  if (!passed && act.close) await gh.closePullRequest(pr.number);
+  return outcome;
+}
+async function run() {
+  const token = getInput("github-token", { required: true });
+  const configPath = getInput("config-path") || ".github/contribution-gateway.yml";
+  const { owner, repo } = context2.repo;
+  const serverUrl = context2.serverUrl || "https://github.com";
+  const gh = new GitHubRepo(getOctokit(token), owner, repo, new URL(serverUrl).hostname, warning);
+  const targets = await resolveTargets(context2.eventName, context2.payload, getInput("pull-request"), gh);
+  if (targets.skip) {
+    info(`Nothing to check: ${targets.skip}.`);
+    return;
+  }
+  const runUrl = `${serverUrl}/${owner}/${repo}/actions/runs/${context2.runId}`;
+  summary.addHeading("Contribution gateway", 3);
+  const outcomes = [];
+  try {
+    for (const number of targets.numbers) {
+      const outcome = await checkPullRequest(gh, number, configPath, targets.report, runUrl);
+      if (outcome) outcomes.push(outcome);
+    }
   } catch (e) {
     if (status(e) === 403) {
       throw new Error(
-        "GitHub refused a write (403). For pull requests from forks, run this action on `pull_request_target` and grant `issues: write` and `pull-requests: write`.",
+        "GitHub refused a write (403). Grant `issues: write`, `pull-requests: write` and (for workflow_run) `statuses: write`. For pull requests from forks, run this action on `pull_request_target` or `workflow_run`, not `pull_request`.",
         { cause: e }
       );
     }
     throw e;
+  } finally {
+    await summary.write();
   }
-  if (act.fail_check) setFailed(summary2);
+  setOutput("passed", String(outcomes.every((o) => o.passed)));
+  setOutput(
+    "violations",
+    JSON.stringify(outcomes.flatMap((o) => o.violations.map((v) => ({ pull_request: o.number, ...v }))))
+  );
+  const failing = outcomes.filter((o) => !o.passed && o.failCheck);
+  if (targets.report === "job" && failing.length) setFailed(failing.map((o) => o.summary).join("\n"));
 }
 async function main() {
   try {

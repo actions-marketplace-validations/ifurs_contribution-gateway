@@ -26,16 +26,34 @@ When a PR breaks the policy, the action:
 
 1. posts a single comment that it keeps up to date
 2. adds a `needs-policy-fixes` label
-3. fails the check
+3. marks the PR's check red (the `contribution-gateway` status, or the job's own check in single-workflow mode)
 4. closes the PR, only if you ask it to
 
 When the contributor fixes the description, the comment changes to "passed" and the label is removed.
 
 ## Setup
 
-1. Add [examples/workflow.yml](examples/workflow.yml) as `.github/workflows/contribution-gateway.yml`.
-2. Optionally add [examples/contribution-gateway.yml](examples/contribution-gateway.yml) as `.github/contribution-gateway.yml` and adjust it. Without it, the defaults above apply. Start with `mode: dry-run` to see results in the workflow log without touching any PR.
-3. Optionally use [examples/pull_request_template.md](examples/pull_request_template.md) so contributors see the checklist and the "AI usage" section up front.
+### 1. Pick a mode
+
+**Two-workflow mode (recommended, required for most public repos from December 2, 2026)**
+
+From [December 2, 2026](https://github.blog/changelog/2026-11-02-pull_request_target-blocked-by-default-december-2/), GitHub blocks `pull_request_target` by default in public repositories. This mode doesn't use that trigger at all.
+
+Add both files from [examples/two-workflow/](examples/two-workflow/) to `.github/workflows/`:
+
+- `contribution-gateway-trigger.yml` runs on `pull_request` with no permissions. It does nothing except finish.
+- `contribution-gateway.yml` starts when the trigger finishes (`workflow_run`). It runs this repository's own workflow file with a write token, looks the PR up through the API, comments and labels, and sets a commit status named `contribution-gateway`.
+
+Mark `contribution-gateway` as a required status check in branch protection if PRs shouldn't be mergeable until it passes. You can also re-check one PR by hand from the Actions tab ("Run workflow", with the PR number).
+
+**Single-workflow mode**
+
+Add [examples/single-workflow.yml](examples/single-workflow.yml) as `.github/workflows/contribution-gateway.yml`. It runs on `pull_request_target`, which is simpler but is blocked in public repositories from December 2, 2026 unless an Actions event policy allows it for this workflow file (Settings → Actions → Policies). Private repositories aren't affected.
+
+### 2. Policy and template
+
+1. Optionally add [examples/contribution-gateway.yml](examples/contribution-gateway.yml) as `.github/contribution-gateway.yml` and adjust it. Without it, the defaults above apply. Start with `mode: dry-run` to see results in the workflow log without touching any PR.
+2. Optionally use [examples/pull_request_template.md](examples/pull_request_template.md) so contributors see the checklist and the "AI usage" section up front.
 
 Tips for the template:
 
@@ -44,9 +62,11 @@ Tips for the template:
 
 ## Security model
 
-- It runs on `pull_request_target` so it can comment on PRs from forks. That trigger is safe only if the workflow never runs the PR's code. **This action never checks out or executes PR code**, and the example workflow doesn't either. Keep it that way.
+- **This action never checks out or executes PR code**, and the example workflows don't either. Keep it that way. That is what makes `pull_request_target` and `workflow_run` safe here.
+- In two-workflow mode nothing produced by the untrusted `pull_request` run (artifacts, outputs, logs) is used. The gateway only learns which branch the run was for, then reads the PR and policy itself.
+- In two-workflow mode a contributor's PR could edit or delete the trigger workflow, so the gateway never runs for it. The PR then has no `contribution-gateway` status at all. Make that status required to block merging, and treat workflow changes in a PR as a red flag.
 - The policy file is read from the PR's **base branch** through the API. A contributor can't change the rules inside their own PR.
-- It needs no secrets beyond the built-in `GITHUB_TOKEN`, with `contents: read`, `issues: write` and `pull-requests: write`.
+- It needs no secrets beyond the built-in `GITHUB_TOKEN`, with `contents: read`, `issues: write`, `pull-requests: write` and, in two-workflow mode, `statuses: write`.
 - It reads the pull request live from the API rather than trusting the event payload, so re-running an old job can't act on an outdated description.
 - Bot comments never repeat text the PR author wrote, only counts, issue numbers and the policy's own wording, so a description can't make the bot post links, mentions or fake approvals.
 - At most 10 issue references are looked up per run, and comments are capped below GitHub's size limit, so a stuffed description can't drain the API quota.
@@ -54,7 +74,13 @@ Tips for the template:
 ## Outputs
 
 - `passed`: `"true"` or `"false"`
-- `violations`: a JSON list of `{ rule, message }`, for follow-up steps
+- `violations`: a JSON list of `{ pull_request, rule, message }`, for follow-up steps
+
+## Inputs
+
+- `github-token`: defaults to the built-in token
+- `config-path`: defaults to `.github/contribution-gateway.yml`
+- `pull-request`: a PR number to check instead of the one from the event, for manual runs
 
 ## Known limits (v0)
 
@@ -62,6 +88,7 @@ Tips for the template:
 - The open-PR count re-runs only when that PR changes. Closing another PR doesn't re-check this one.
 - Counting open PRs stops after 1,000 to keep huge repositories fast.
 - A closed PR isn't reopened automatically after it's fixed.
+- In two-workflow mode, GitHub may hold the trigger workflow for maintainer approval when a contributor is brand new to GitHub (the default "Approval for running fork pull request workflows" setting). The gateway runs once that's approved, or you can run it by hand for the PR number.
 - `exempt.bots: true` trusts any GitHub App account. If you install apps that open PRs you don't want waved through, set it to `false` and list the trusted bots in `exempt.users`.
 - GitHub may report org members with *private* membership as `CONTRIBUTOR` or `NONE`, so they aren't exempt. Make the membership public or add them to `exempt.users`.
 - Only `GITHUB_TOKEN` and personal access tokens are recognised as the comment's author. With a GitHub App token, any bot comment carrying the marker is treated as the gateway's own.

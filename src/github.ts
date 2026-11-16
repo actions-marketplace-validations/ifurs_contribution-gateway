@@ -1,6 +1,7 @@
 import type { getOctokit } from "@actions/github";
 import { hasLabel, type IssueInfo, type PullRequestInfo, type RepoData } from "./evaluate";
 import { MARKER } from "./report";
+import { statusDescription, type TargetLookup } from "./targets";
 
 export type Octokit = ReturnType<typeof getOctokit>;
 
@@ -12,9 +13,13 @@ const status = (e: unknown): number | undefined => (e as { status?: number }).st
 export interface LivePullRequest extends PullRequestInfo {
   state: string;
   baseRef: string;
+  headSha: string;
 }
 
-export class GitHubRepo implements RepoData {
+/** Name of the commit status shown on PRs in two-workflow mode. Can be made a required check. */
+export const STATUS_CONTEXT = "contribution-gateway";
+
+export class GitHubRepo implements RepoData, TargetLookup {
   /** Login of the token's own user, when the token can tell us (personal access tokens). */
   private selfLogin: string | null | undefined;
 
@@ -36,6 +41,7 @@ export class GitHubRepo implements RepoData {
       number: data.number,
       state: data.state,
       baseRef: data.base.ref,
+      headSha: data.head.sha,
       author: data.user.login,
       authorType: data.user.type,
       association: data.author_association,
@@ -139,6 +145,29 @@ export class GitHubRepo implements RepoData {
     } catch (e) {
       if (status(e) !== 404) throw e;
     }
+  }
+
+  async findOpenPullRequests(headOwner: string, headBranch: string): Promise<number[]> {
+    const { data } = await this.octokit.rest.pulls.list({
+      owner: this.owner,
+      repo: this.repo,
+      state: "open",
+      head: `${headOwner}:${headBranch}`,
+      per_page: 10,
+    });
+    return data.map((pr) => pr.number);
+  }
+
+  async setStatus(sha: string, state: "success" | "failure", description: string, targetUrl: string): Promise<void> {
+    await this.octokit.rest.repos.createCommitStatus({
+      owner: this.owner,
+      repo: this.repo,
+      sha,
+      state,
+      context: STATUS_CONTEXT,
+      description: statusDescription(description),
+      target_url: targetUrl,
+    });
   }
 
   async closePullRequest(number: number): Promise<void> {

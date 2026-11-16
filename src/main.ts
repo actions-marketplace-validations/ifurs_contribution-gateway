@@ -1,28 +1,38 @@
 import * as core from "@actions/core";
 import { context, getOctokit } from "@actions/github";
 import { ConfigError, parsePolicy } from "./config";
-import { evaluate } from "./evaluate";
+import { evaluate, type Violation } from "./evaluate";
 import { GitHubRepo, httpStatus } from "./github";
-import { failureComment, passComment, summarize } from "./report";
+import { failureComment, passComment, RULE_TITLES, summarize } from "./report";
+import { resolveTargets, type ReportStyle } from "./targets";
 
-export async function run(): Promise<void> {
-  const number = (context.payload.pull_request as { number?: number } | undefined)?.number;
-  if (!number) {
-    core.setFailed("contribution-gateway must run on pull_request_target events (it found no pull request in the event).");
-    return;
-  }
+interface Outcome {
+  number: number;
+  passed: boolean;
+  summary: string;
+  violations: Violation[];
+  /** The policy asks for a failing check when rules are broken. */
+  failCheck: boolean;
+}
 
-  const token = core.getInput("github-token", { required: true });
-  const configPath = core.getInput("config-path") || ".github/contribution-gateway.yml";
-  const { owner, repo } = context.repo;
-  const host = new URL(context.serverUrl || "https://github.com").hostname;
-  const gh = new GitHubRepo(getOctokit(token), owner, repo, host, core.warning);
+function statusText(passed: boolean, violations: Violation[], exemptReason: string | null): string {
+  if (exemptReason) return `Skipped: ${exemptReason}`;
+  if (passed) return "All contribution checks passed";
+  return `Needs changes: ${violations.map((v) => RULE_TITLES[v.rule]).join(", ")} (see the PR comment)`;
+}
 
+async function checkPullRequest(
+  gh: GitHubRepo,
+  number: number,
+  configPath: string,
+  report: ReportStyle,
+  runUrl: string,
+): Promise<Outcome | null> {
   // Use the pull request as it is now, not the (possibly replayed or stale) event payload.
   const pr = await gh.getPullRequest(number);
   if (pr.state !== "open") {
     core.info(`PR #${pr.number} is ${pr.state}; nothing to check.`);
-    return;
+    return null;
   }
 
   // The policy is read from the base branch through the API, never from the PR's own files,
@@ -34,40 +44,78 @@ export async function run(): Promise<void> {
 
   const result = await evaluate(pr, policy, gh);
   const summary = summarize(result);
-  core.info(summary);
   const passed = result.violations.length === 0;
-  core.setOutput("passed", String(passed));
-  core.setOutput("violations", JSON.stringify(result.violations));
-  await core.summary.addHeading("Contribution gateway", 3).addCodeBlock(summary).write();
+  core.info(`PR #${pr.number}: ${summary}`);
+  core.summary.addHeading(`PR #${pr.number}`, 4).addCodeBlock(summary);
+  const outcome: Outcome = { number: pr.number, passed, summary, violations: result.violations, failCheck: policy.on_violation.fail_check };
 
   if (policy.mode === "dry-run") {
-    core.info("Dry-run mode: no comments, labels or status changes were made.");
-    return;
+    core.info("Dry-run mode: no comments, labels or statuses were changed.");
+    return outcome;
   }
 
   const act = policy.on_violation;
-  try {
-    if (passed) {
-      // Also covers PRs that became exempt (e.g. a maintainer added the skip label):
-      // an earlier failure comment and label must not linger.
-      if (act.comment) await gh.upsertComment(pr.number, passComment(result.exemptReason), false);
-      if (act.label) await gh.setLabel(pr.number, act.label, false, pr.labels);
-      return;
-    }
+  if (passed) {
+    // Also covers PRs that became exempt (e.g. a maintainer added the skip label):
+    // an earlier failure comment and label must not linger.
+    if (act.comment) await gh.upsertComment(pr.number, passComment(result.exemptReason), false);
+    if (act.label) await gh.setLabel(pr.number, act.label, false, pr.labels);
+  } else {
     if (act.comment) await gh.upsertComment(pr.number, failureComment(pr.author, result, policy, act.close), true);
     if (act.label) await gh.setLabel(pr.number, act.label, true, pr.labels);
-    if (act.close) await gh.closePullRequest(pr.number);
+  }
+  if (report === "status") {
+    const state = passed || !act.fail_check ? "success" : "failure";
+    await gh.setStatus(pr.headSha, state, statusText(passed, result.violations, result.exemptReason), runUrl);
+  }
+  if (!passed && act.close) await gh.closePullRequest(pr.number);
+  return outcome;
+}
+
+export async function run(): Promise<void> {
+  const token = core.getInput("github-token", { required: true });
+  const configPath = core.getInput("config-path") || ".github/contribution-gateway.yml";
+  const { owner, repo } = context.repo;
+  const serverUrl = context.serverUrl || "https://github.com";
+  const gh = new GitHubRepo(getOctokit(token), owner, repo, new URL(serverUrl).hostname, core.warning);
+
+  const targets = await resolveTargets(context.eventName, context.payload, core.getInput("pull-request"), gh);
+  if (targets.skip) {
+    core.info(`Nothing to check: ${targets.skip}.`);
+    return;
+  }
+
+  const runUrl = `${serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+  core.summary.addHeading("Contribution gateway", 3);
+  const outcomes: Outcome[] = [];
+  try {
+    for (const number of targets.numbers) {
+      const outcome = await checkPullRequest(gh, number, configPath, targets.report, runUrl);
+      if (outcome) outcomes.push(outcome);
+    }
   } catch (e) {
     if (httpStatus(e) === 403) {
       throw new Error(
-        "GitHub refused a write (403). For pull requests from forks, run this action on `pull_request_target` and grant `issues: write` and `pull-requests: write`.",
+        "GitHub refused a write (403). Grant `issues: write`, `pull-requests: write` and (for workflow_run) `statuses: write`. " +
+          "For pull requests from forks, run this action on `pull_request_target` or `workflow_run`, not `pull_request`.",
         { cause: e },
       );
     }
     throw e;
+  } finally {
+    await core.summary.write();
   }
 
-  if (act.fail_check) core.setFailed(summary);
+  core.setOutput("passed", String(outcomes.every((o) => o.passed)));
+  core.setOutput(
+    "violations",
+    JSON.stringify(outcomes.flatMap((o) => o.violations.map((v) => ({ pull_request: o.number, ...v })))),
+  );
+
+  // In single-workflow mode the job's own check is what the PR shows. In two-workflow mode the
+  // commit status carries the result, so this job only fails on real errors.
+  const failing = outcomes.filter((o) => !o.passed && o.failCheck);
+  if (targets.report === "job" && failing.length) core.setFailed(failing.map((o) => o.summary).join("\n"));
 }
 
 export async function main(): Promise<void> {
