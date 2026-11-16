@@ -8,14 +8,17 @@
  *   the untrusted run (artifacts, outputs) is used, only which branch it ran for.
  * - `workflow_dispatch`: a maintainer re-checks one PR by number.
  * - `schedule`: a sweep re-checks open PRs that have no gateway status on their head commit
- *   (for example because the PR disabled the trigger workflow) or were paused for too many
- *   updates. It runs from the default branch, so a PR cannot switch it off.
+ *   (for example because the PR disabled the trigger workflow), were paused for too many
+ *   updates, or changed since their commit's last result (for example a PR whose trigger never
+ *   ran because of a merge conflict or a pending approval). It runs from the default branch,
+ *   so a PR cannot switch it off.
  */
 
 export type ReportStyle = "job" | "status";
 
-/** How many recently updated open PRs one sweep looks at. */
+/** How many recently updated open PRs one sweep looks at, and how many it may evaluate. */
 export const SWEEP_LIMIT = 50;
+export const SWEEP_MAX_CHECKS = 10;
 
 export interface Targets {
   numbers: number[];
@@ -37,8 +40,8 @@ interface WorkflowRunPayload {
 export interface TargetLookup {
   /** Open PRs in this repository whose head is `owner:branch`. */
   findOpenPullRequests(headOwner: string, headBranch: string): Promise<number[]>;
-  /** Open PRs whose head commit has no gateway status yet, or a paused one. */
-  sweepCandidates(limit: number): Promise<number[]>;
+  /** Open PRs needing a re-check: no or paused result, or changed since the last result. */
+  sweepCandidates(scan: number, max: number): Promise<number[]>;
 }
 
 export async function resolveTargets(
@@ -81,7 +84,7 @@ export async function resolveTargets(
   }
 
   if (eventName === "schedule") {
-    const numbers = await lookup.sweepCandidates(SWEEP_LIMIT);
+    const numbers = await lookup.sweepCandidates(SWEEP_LIMIT, SWEEP_MAX_CHECKS);
     if (!numbers.length) return { numbers: [], report: "status", sweep: true, skip: "every recently updated open PR already has a result" };
     return { numbers, report: "status", sweep: true };
   }

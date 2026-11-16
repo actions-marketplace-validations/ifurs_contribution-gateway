@@ -4,8 +4,8 @@ import { resolveTargets, statusDescription, type TargetLookup } from "../src/tar
 function lookup(result: number[] = [], sweep: number[] = []): TargetLookup & { calls: string[] } {
   const l = {
     calls: [] as string[],
-    sweepCandidates: async (limit: number) => {
-      l.calls.push(`sweep:${limit}`);
+    sweepCandidates: async (scan: number) => {
+      l.calls.push(`sweep:${scan}`);
       return sweep;
     },
     findOpenPullRequests: async (owner: string, branch: string) => {

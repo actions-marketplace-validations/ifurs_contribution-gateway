@@ -33691,6 +33691,7 @@ async function evaluate(pr, policy, data) {
 
 // src/targets.ts
 var SWEEP_LIMIT = 50;
+var SWEEP_MAX_CHECKS = 10;
 async function resolveTargets(eventName, payload, inputNumber, lookup) {
   const requested = inputNumber.trim();
   if (requested) {
@@ -33721,7 +33722,7 @@ async function resolveTargets(eventName, payload, inputNumber, lookup) {
     return { numbers: [], report: "status", skip: "manual runs need the pull-request input" };
   }
   if (eventName === "schedule") {
-    const numbers = await lookup.sweepCandidates(SWEEP_LIMIT);
+    const numbers = await lookup.sweepCandidates(SWEEP_LIMIT, SWEEP_MAX_CHECKS);
     if (!numbers.length) return { numbers: [], report: "status", sweep: true, skip: "every recently updated open PR already has a result" };
     return { numbers, report: "status", sweep: true };
   }
@@ -33740,6 +33741,7 @@ var MAX_FILE_PAGES = 30;
 var status = (e) => e.status;
 var STATUS_CONTEXT = "contribution-gateway";
 var PAUSED_PREFIX = "Paused:";
+var STALE_GRACE_MS = 2 * 6e4;
 var GitHubRepo = class {
   constructor(octokit, owner, repo, host = "github.com", warn = () => {
   }, installationToken = false) {
@@ -33912,27 +33914,37 @@ var GitHubRepo = class {
     return data.filter((pr) => pr.head.repo?.owner.login.toLowerCase() === headOwner.toLowerCase() && pr.head.ref === headBranch).map((pr) => pr.number);
   }
   /**
-   * Open PRs (most recently updated first, up to `limit`) whose head commit has no gateway
-   * status yet, or a "paused" one. Used by the scheduled sweep. One GraphQL request.
+   * PRs the scheduled sweep should check, from the `scan` most recently updated open PRs, at
+   * most `max` of them, most urgent first:
+   * 1. the head commit has no gateway status, or a "paused" one;
+   * 2. the PR changed after the commit's last result (by more than STALE_GRACE_MS, which covers
+   *    the gateway's own comment and label right after its status). This catches PRs whose
+   *    trigger never ran (merge conflicts, runs awaiting approval) but whose commit shows a
+   *    result from another PR sharing it.
+   * One GraphQL request.
    */
-  async sweepCandidates(limit) {
+  async sweepCandidates(scan, max) {
     const query = `query($owner: String!, $repo: String!, $n: Int!, $context: String!) {
       repository(owner: $owner, name: $repo) {
         pullRequests(states: OPEN, first: $n, orderBy: { field: UPDATED_AT, direction: DESC }) {
-          nodes { number commits(last: 1) { nodes { commit { status { context(name: $context) { description } } } } } }
+          nodes { number updatedAt commits(last: 1) { nodes { commit { status { context(name: $context) { description createdAt } } } } } }
         }
       }
     }`;
     const res = await this.octokit.graphql(query, {
       owner: this.owner,
       repo: this.repo,
-      n: limit,
+      n: scan,
       context: STATUS_CONTEXT
     });
-    return res.repository.pullRequests.nodes.filter((pr) => {
-      const ctx = pr.commits.nodes[0]?.commit.status?.context;
-      return !ctx || (ctx.description ?? "").startsWith(PAUSED_PREFIX);
-    }).map((pr) => pr.number);
+    const urgent = [];
+    const stale = [];
+    for (const pr of res.repository.pullRequests.nodes) {
+      const ctx = pr.commits.nodes[0]?.commit.status?.context ?? null;
+      if (!ctx || (ctx.description ?? "").startsWith(PAUSED_PREFIX)) urgent.push(pr.number);
+      else if (Date.parse(pr.updatedAt) > Date.parse(ctx.createdAt) + STALE_GRACE_MS) stale.push(pr.number);
+    }
+    return [...urgent, ...stale].slice(0, max);
   }
   /** How many gateway statuses were set on `sha` since `since` (newest 100 statuses checked). */
   async recentStatusCount(sha, since) {

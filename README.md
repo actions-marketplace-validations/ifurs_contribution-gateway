@@ -56,7 +56,18 @@ Add both files from [examples/two-workflow/](examples/two-workflow/) to `.github
 - `contribution-gateway-trigger.yml` runs on `pull_request` with no permissions. It does nothing except finish.
 - `contribution-gateway.yml` starts when the trigger finishes (`workflow_run`). It runs this repository's own workflow file with a write token, looks the PR up through the API, comments and labels, and sets a commit status named `contribution-gateway`.
 
-The gate workflow also runs every 15 minutes as a **sweep**. It re-checks open PRs that have no `contribution-gateway` result yet, which is how PRs that disabled the trigger workflow still get a red status. GitHub turns off scheduled workflows in public repos after 60 days without activity, so check the Actions tab now and then. You can also re-check one PR by hand from the Actions tab ("Run workflow", with the PR number).
+The gate workflow also runs every 15 minutes as a **sweep**. It looks at the 50 most recently updated open PRs and checks up to 10 of them, in this order:
+
+1. PRs with no `contribution-gateway` result, or a paused one
+2. PRs that changed after their commit's last result
+
+The sweep catches PRs the trigger never ran for:
+
+- a PR that disabled the trigger workflow
+- a PR with a merge conflict (GitHub doesn't run `pull_request` workflows for those)
+- a PR whose workflow run is waiting for maintainer approval
+
+GitHub turns off scheduled workflows in public repos after 60 days without activity, so check the Actions tab now and then. You can also re-check one PR by hand from the Actions tab ("Run workflow", with the PR number).
 
 To block merging until it passes, make `contribution-gateway` a required status check. A PR can add its own passing check with that name, but GitHub then requires *both* to pass, and the gateway's own status is red:
 
@@ -138,7 +149,7 @@ In two-workflow mode, a PR that gets more than 20 results within an hour is *pau
 - The open-PR count re-runs only when that PR changes. Closing another PR doesn't re-check this one.
 - A closed PR isn't reopened automatically after it's fixed.
 - Open PRs are listed up to 1,000 per run. In bigger repositories, newcomer counts and shared-commit grouping may be incomplete.
-- The sweep looks at the 50 most recently updated open PRs.
+- The sweep checks at most 10 PRs per run, from the 50 most recently updated open PRs. A large backlog can take several sweeps.
 - `exempt.users` matches logins. If a listed person renames or deletes their account, someone else could register that login, so keep the list current.
 - In two-workflow mode, GitHub may hold the trigger workflow for maintainer approval when a contributor is brand new to GitHub (the default "Approval for running fork pull request workflows" setting). The gateway runs once that's approved, or you can run it by hand for the PR number.
 - `exempt.bots: true` trusts any GitHub App account. If you install apps that open PRs you don't want waved through, set it to `false` and list the trusted bots in `exempt.users`.

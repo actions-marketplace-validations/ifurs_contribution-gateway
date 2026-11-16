@@ -30,6 +30,8 @@ export interface OpenPullRequest {
 export const STATUS_CONTEXT = "contribution-gateway";
 /** Description prefix of the status set while a PR is paused for too many updates. */
 export const PAUSED_PREFIX = "Paused:";
+/** A PR updated this long after its commit's last result is re-checked by the sweep. */
+const STALE_GRACE_MS = 2 * 60_000;
 
 export class GitHubRepo implements RepoData, TargetLookup {
   /** Login of the token's own user, when the token can tell us (personal access tokens). */
@@ -219,30 +221,39 @@ export class GitHubRepo implements RepoData, TargetLookup {
   }
 
   /**
-   * Open PRs (most recently updated first, up to `limit`) whose head commit has no gateway
-   * status yet, or a "paused" one. Used by the scheduled sweep. One GraphQL request.
+   * PRs the scheduled sweep should check, from the `scan` most recently updated open PRs, at
+   * most `max` of them, most urgent first:
+   * 1. the head commit has no gateway status, or a "paused" one;
+   * 2. the PR changed after the commit's last result (by more than STALE_GRACE_MS, which covers
+   *    the gateway's own comment and label right after its status). This catches PRs whose
+   *    trigger never ran (merge conflicts, runs awaiting approval) but whose commit shows a
+   *    result from another PR sharing it.
+   * One GraphQL request.
    */
-  async sweepCandidates(limit: number): Promise<number[]> {
+  async sweepCandidates(scan: number, max: number): Promise<number[]> {
     const query = `query($owner: String!, $repo: String!, $n: Int!, $context: String!) {
       repository(owner: $owner, name: $repo) {
         pullRequests(states: OPEN, first: $n, orderBy: { field: UPDATED_AT, direction: DESC }) {
-          nodes { number commits(last: 1) { nodes { commit { status { context(name: $context) { description } } } } } }
+          nodes { number updatedAt commits(last: 1) { nodes { commit { status { context(name: $context) { description createdAt } } } } } }
         }
       }
     }`;
-    type Node = { number: number; commits: { nodes: { commit: { status: { context: { description: string | null } | null } | null } }[] } };
+    type Ctx = { description: string | null; createdAt: string } | null;
+    type Node = { number: number; updatedAt: string; commits: { nodes: { commit: { status: { context: Ctx } | null } }[] } };
     const res = await this.octokit.graphql<{ repository: { pullRequests: { nodes: Node[] } } }>(query, {
       owner: this.owner,
       repo: this.repo,
-      n: limit,
+      n: scan,
       context: STATUS_CONTEXT,
     });
-    return res.repository.pullRequests.nodes
-      .filter((pr) => {
-        const ctx = pr.commits.nodes[0]?.commit.status?.context;
-        return !ctx || (ctx.description ?? "").startsWith(PAUSED_PREFIX);
-      })
-      .map((pr) => pr.number);
+    const urgent: number[] = [];
+    const stale: number[] = [];
+    for (const pr of res.repository.pullRequests.nodes) {
+      const ctx = pr.commits.nodes[0]?.commit.status?.context ?? null;
+      if (!ctx || (ctx.description ?? "").startsWith(PAUSED_PREFIX)) urgent.push(pr.number);
+      else if (Date.parse(pr.updatedAt) > Date.parse(ctx.createdAt) + STALE_GRACE_MS) stale.push(pr.number);
+    }
+    return [...urgent, ...stale].slice(0, max);
   }
 
   /** How many gateway statuses were set on `sha` since `since` (newest 100 statuses checked). */

@@ -4,7 +4,7 @@ import { statusesByCommit, type PrOutcome } from "../src/aggregate";
 import { parsePolicy } from "../src/config";
 import { evaluate, type PullRequestInfo, type RepoData } from "../src/evaluate";
 import { failureComment } from "../src/report";
-import { resolveTargets, SWEEP_LIMIT } from "../src/targets";
+import { resolveTargets, SWEEP_LIMIT, SWEEP_MAX_CHECKS } from "../src/targets";
 
 const repo = (files: string[] = []): RepoData => ({
   owner: "acme",
@@ -103,7 +103,7 @@ describe("statusesByCommit", () => {
 describe("scheduled sweep targets", () => {
   const lookup = (sweep: number[]) => ({
     findOpenPullRequests: async () => [],
-    sweepCandidates: async (limit: number) => (limit === SWEEP_LIMIT ? sweep : []),
+    sweepCandidates: async (scan: number, max: number) => (scan === SWEEP_LIMIT && max === SWEEP_MAX_CHECKS ? sweep : []),
   });
 
   it("checks open PRs with no result yet, outside the per-PR budget", async () => {
