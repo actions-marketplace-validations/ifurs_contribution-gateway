@@ -30,6 +30,6 @@ jobs:
   gate:
     runs-on: ubuntu-latest
     steps:
-      - uses: OWNER/contribution-gateway@v0
+      - uses: ifurs/contribution-gateway@v0
         with:
           pull-request: ${{ inputs.pr }}
