@@ -17,6 +17,7 @@ function repo(issues: Record<number, IssueInfo> = {}): RepoData & { lookups: num
       return issues[n] ?? null;
     },
     countOpenPullRequests: async () => 1,
+    listChangedFiles: async () => [] as string[],
   };
   return r;
 }

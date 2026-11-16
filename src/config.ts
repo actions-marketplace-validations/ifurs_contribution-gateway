@@ -48,6 +48,14 @@ export interface Policy {
       /** Text of the line that starts the disclosure section, e.g. "AI usage". */
       heading: string;
     };
+    workflow_changes: {
+      enabled: boolean;
+      /**
+       * Path prefixes a non-exempt PR may not touch without maintainer review. A PR that edits
+       * workflows can switch off or impersonate this gateway's own check, so this is on by default.
+       */
+      paths: string[];
+    };
   };
   on_violation: {
     comment: boolean;
@@ -77,6 +85,7 @@ export const DEFAULT_POLICY: Policy = {
     },
     checklist: { enabled: true, require_all_checked: true, min_items: 0 },
     disclosure: { enabled: false, heading: "AI usage" },
+    workflow_changes: { enabled: true, paths: [".github/workflows/", ".github/actions/"] },
   },
   on_violation: {
     comment: true,

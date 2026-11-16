@@ -1,15 +1,19 @@
 # Copy to .github/workflows/contribution-gateway.yml
 #
-# Two-workflow mode, part 2 of 2. Starts when the trigger workflow finishes, runs with this
-# repository's own workflow file and token, finds the pull request through the API, and
-# reports with a commit status called "contribution-gateway". It never checks out or runs
-# pull request code. Mark that status as required in branch protection to block merging.
+# Two-workflow mode, part 2 of 2. Runs from the default branch with this repository's own
+# token: when the trigger workflow finishes, on a schedule, or by hand. It finds the pull
+# request through the API, comments and labels, and reports with a commit status called
+# "contribution-gateway". It never checks out or runs pull request code.
 name: Contribution gateway
 
 on:
   workflow_run:
     workflows: ["Contribution gateway trigger"]   # must match the trigger workflow's name
     types: [completed]
+  schedule:
+    # Sweep: re-checks open PRs that have no result yet (e.g. a PR that disabled the trigger
+    # workflow) or were paused for too many updates. GitHub may delay scheduled runs.
+    - cron: "*/15 * * * *"
   workflow_dispatch:
     inputs:
       pr:
@@ -19,17 +23,19 @@ on:
 permissions:
   contents: read        # read the policy file from the base branch
   issues: write         # comments and labels (PRs are issues in the API)
-  pull-requests: write  # read PRs; close them if the policy says to
+  pull-requests: read   # read PRs and their files; use `write` if the policy sets `close: true`
   statuses: write       # the "contribution-gateway" status on the PR
 
 concurrency:
-  group: contribution-gateway-${{ github.event.workflow_run.head_repository.full_name || 'manual' }}-${{ github.event.workflow_run.head_branch || inputs.pr }}
-  cancel-in-progress: true
+  group: contribution-gateway-${{ github.event.workflow_run.head_repository.full_name || github.event_name }}-${{ github.event.workflow_run.head_branch || inputs.pr || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'workflow_run' }}
 
 jobs:
   gate:
     runs-on: ubuntu-latest
     steps:
+      # For production, pin a full commit SHA instead of the moving v0 tag, e.g.
+      #   uses: ifurs/contribution-gateway@<40-character SHA>  # v0.2.0
       - uses: ifurs/contribution-gateway@v0
         with:
           pull-request: ${{ inputs.pr }}

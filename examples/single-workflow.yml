@@ -3,6 +3,10 @@
 # Single-workflow mode. Simple, but from December 2, 2026 GitHub blocks pull_request_target
 # in public repositories unless an Actions event policy allows it for this workflow file.
 # For public repositories, prefer the two-workflow setup in examples/two-workflow/.
+#
+# The result is this job's own check ("gate"). A pull request can add its own workflow with a
+# job of the same name that passes, so don't rely on "gate" as a required status check; use
+# two-workflow mode if you need a check that can gate merging.
 name: Contribution gateway
 
 on:
@@ -15,7 +19,7 @@ on:
 permissions:
   contents: read        # read the policy file from the base branch
   issues: write         # comments and labels (PRs are issues in the API)
-  pull-requests: write  # close pull requests, if the policy says to
+  pull-requests: read   # read PRs and their files; use `write` if the policy sets `close: true`
 
 concurrency:
   group: contribution-gateway-${{ github.event.pull_request.number }}
@@ -25,4 +29,6 @@ jobs:
   gate:
     runs-on: ubuntu-latest
     steps:
+      # For production, pin a full commit SHA instead of the moving v0 tag, e.g.
+      #   uses: ifurs/contribution-gateway@<40-character SHA>  # v0.2.0
       - uses: ifurs/contribution-gateway@v0

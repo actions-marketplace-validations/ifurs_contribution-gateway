@@ -4,12 +4,13 @@ import { ConfigError, parsePolicy, type Policy } from "../src/config";
 import { evaluate, type IssueInfo, type PullRequestInfo, type RepoData } from "../src/evaluate";
 import { failureComment, MARKER } from "../src/report";
 
-function fakeRepo(issues: Record<number, IssueInfo>, openPrs = 1): RepoData {
+function fakeRepo(issues: Record<number, IssueInfo>, openPrs = 1, files: string[] = []): RepoData {
   return {
     owner: "acme",
     repo: "widgets",
     getIssue: async (n) => issues[n] ?? null,
     countOpenPullRequests: async () => openPrs,
+    listChangedFiles: async () => files,
   };
 }
 
@@ -33,7 +34,7 @@ describe("evaluate", () => {
   it("passes a well-formed PR", async () => {
     const r = await evaluate(pr(), policy(), fakeRepo({ 1: openIssue }));
     expect(r.violations).toEqual([]);
-    expect(r.passed).toEqual(["linked_issue", "open_pr_limit", "checklist"]);
+    expect(r.passed).toEqual(["workflow_changes", "linked_issue", "open_pr_limit", "checklist"]);
   });
 
   it("exempts maintainers, bots, listed users and labels", async () => {
@@ -55,10 +56,10 @@ describe("evaluate", () => {
     });
     const msg = async (body: string) => (await evaluate(pr({ body }), p, repo)).violations.find((v) => v.rule === "linked_issue")?.message;
     expect(await msg("no reference")).toMatch(/Link the issue/);
-    expect(await msg("Fixes #2")).toMatch(/#2 is closed/);
-    expect(await msg("Fixes #3")).toMatch(/#3 is a pull request/);
-    expect(await msg("Fixes #4")).toMatch(/#4 does not have the "accepted" label/);
-    expect(await msg("Fixes #9")).toMatch(/#9 does not exist/);
+    expect(await msg("Fixes #2")).toMatch(/`#2` is closed/);
+    expect(await msg("Fixes #3")).toMatch(/`#3` is a pull request/);
+    expect(await msg("Fixes #4")).toMatch(/`#4` does not have the "accepted" label/);
+    expect(await msg("Fixes #9")).toMatch(/`#9` does not exist/);
     expect(await msg("Fixes #4 and #5")).toBeUndefined();
   });
 
@@ -98,7 +99,7 @@ describe("evaluate", () => {
   });
 
   it("skips disabled rules", async () => {
-    const p = policy("rules: { linked_issue: { enabled: false }, open_pr_limit: { enabled: false }, checklist: { enabled: false } }");
+    const p = policy("rules: { linked_issue: { enabled: false }, open_pr_limit: { enabled: false }, checklist: { enabled: false }, workflow_changes: { enabled: false } }");
     const r = await evaluate(pr({ body: "" }), p, fakeRepo({}, 5));
     expect(r).toEqual({ exemptReason: null, violations: [], passed: [] });
   });

@@ -9,6 +9,7 @@ export const RULE_TITLES: Record<RuleId, string> = {
   open_pr_limit: "Open pull requests",
   checklist: "Checklist",
   disclosure: "Disclosure",
+  workflow_changes: "Workflow files",
 };
 
 /** GitHub rejects comments over 65,536 characters; stay safely below. */

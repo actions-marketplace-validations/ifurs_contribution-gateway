@@ -3,11 +3,13 @@
 
 # "enforce" comments, labels and fails the check. Start with "dry-run" to see what
 # would happen in the workflow logs without touching any pull request.
+# Note: in two-workflow mode, dry-run still posts a green "contribution-gateway" status
+# (saying it is a dry run), so it never blocks merging.
 mode: enforce
 
 exempt:
-  associations: [OWNER, MEMBER, COLLABORATOR]  # people with write access skip the rules
-  users: []                                    # e.g. [trusted-friend]
+  associations: [OWNER, MEMBER, COLLABORATOR]  # owner, org members (any repo access) and invited collaborators (any role, even read-only)
+  users: []                                    # logins, e.g. [trusted-friend]; remove people who rename or delete their account
   bots: true                                   # dependabot, renovate, ...
   labels: [skip-gateway]                       # a maintainer can add this label to wave a PR through
 
@@ -15,7 +17,7 @@ rules:
   linked_issue:
     enabled: true
     require_open: true
-    require_label: ""        # e.g. "accepted": only issues a maintainer has approved count
+    require_label: ""        # recommended, e.g. "accepted": without it, contributors can link any open issue, even one they just opened
 
   open_pr_limit:
     enabled: true
@@ -30,6 +32,10 @@ rules:
   disclosure:
     enabled: false
     heading: "AI usage"      # the PR description needs a line or section with this text, answered
+
+  workflow_changes:
+    enabled: true            # PRs touching these paths need maintainer review (they could disable this check)
+    paths: [.github/workflows/, .github/actions/]
 
 on_violation:
   comment: true

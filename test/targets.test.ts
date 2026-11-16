@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { resolveTargets, statusDescription, type TargetLookup } from "../src/targets";
 
-function lookup(result: number[] = []): TargetLookup & { calls: string[] } {
+function lookup(result: number[] = [], sweep: number[] = []): TargetLookup & { calls: string[] } {
   const l = {
     calls: [] as string[],
+    sweepCandidates: async (limit: number) => {
+      l.calls.push(`sweep:${limit}`);
+      return sweep;
+    },
     findOpenPullRequests: async (owner: string, branch: string) => {
       l.calls.push(`${owner}:${branch}`);
       return result;

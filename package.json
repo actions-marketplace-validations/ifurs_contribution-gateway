@@ -1,6 +1,6 @@
 {
   "name": "contribution-gateway",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Policy-as-config gate for pull requests: linked issues, newcomer PR limits, checklists and disclosure, with no AI guessing.",
   "private": true,
   "type": "module",

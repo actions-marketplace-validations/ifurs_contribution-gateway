@@ -5,7 +5,7 @@ import { findIssueRefs, hasDisclosure, readChecklist, withoutSection } from "./m
  * At most this many issue references are looked up, so a description stuffed with `#1 #2 ...`
  * cannot burn through the repository's API quota.
  */
-export const MAX_ISSUE_LOOKUPS = 10;
+export const MAX_ISSUE_LOOKUPS = 3;
 
 export interface PullRequestInfo {
   number: number;
@@ -32,9 +32,11 @@ export interface RepoData {
   getIssue(number: number): Promise<IssueInfo | null>;
   /** Open pull requests in this repository authored by `login`, including the current one. */
   countOpenPullRequests(login: string): Promise<number>;
+  /** Paths the PR adds, changes, removes or renames (both old and new names for renames). */
+  listChangedFiles(number: number): Promise<string[]>;
 }
 
-export type RuleId = "linked_issue" | "open_pr_limit" | "checklist" | "disclosure";
+export type RuleId = "linked_issue" | "open_pr_limit" | "checklist" | "disclosure" | "workflow_changes";
 
 /**
  * A failed rule. Messages are built only from the policy, numbers and the author's login,
@@ -79,10 +81,12 @@ async function checkLinkedIssue(pr: PullRequestInfo, policy: Policy, data: RepoD
   const problems: string[] = [];
   for (const { number } of refs.slice(0, MAX_ISSUE_LOOKUPS)) {
     const issue = await data.getIssue(number);
-    if (!issue) problems.push(`#${number} does not exist`);
-    else if (issue.isPullRequest) problems.push(`#${number} is a pull request, not an issue`);
-    else if (rule.require_open && issue.state !== "open") problems.push(`#${number} is closed`);
-    else if (rule.require_label && !hasLabel(issue.labels, rule.require_label)) problems.push(`#${number} does not have the "${rule.require_label}" label yet`);
+    // Numbers are shown in code spans so the bot doesn't cross-reference issues the PR author picked.
+    const ref = `\`#${number}\``;
+    if (!issue) problems.push(`${ref} does not exist`);
+    else if (issue.isPullRequest) problems.push(`${ref} is a pull request, not an issue`);
+    else if (rule.require_open && issue.state !== "open") problems.push(`${ref} is closed`);
+    else if (rule.require_label && !hasLabel(issue.labels, rule.require_label)) problems.push(`${ref} does not have the "${rule.require_label}" label yet`);
     else return null; // one valid issue is enough
   }
   if (refs.length > MAX_ISSUE_LOOKUPS) problems.push(`only the first ${MAX_ISSUE_LOOKUPS} references were checked`);
@@ -140,6 +144,18 @@ function checkDisclosure(pr: PullRequestInfo, policy: Policy): Violation | null 
   };
 }
 
+async function checkWorkflowChanges(pr: PullRequestInfo, policy: Policy, data: RepoData): Promise<Violation | null> {
+  const prefixes = policy.rules.workflow_changes.paths.map((p) => p.toLowerCase());
+  const files = await data.listChangedFiles(pr.number);
+  const touched = files.filter((f) => prefixes.some((p) => f.toLowerCase().startsWith(p)));
+  if (!touched.length) return null;
+  // File names come from the PR author, so they are not repeated in the bot's message.
+  return {
+    rule: "workflow_changes",
+    message: `This PR changes ${touched.length} workflow or action file${touched.length === 1 ? "" : "s"}. Changes like these can alter the repository's automation, including this check, so a maintainer needs to review them first (they can add the skip label once they have).`,
+  };
+}
+
 export async function evaluate(pr: PullRequestInfo, policy: Policy, data: RepoData): Promise<Evaluation> {
   const reason = exemptReason(pr, policy);
   if (reason) return { exemptReason: reason, violations: [], passed: [] };
@@ -152,6 +168,7 @@ export async function evaluate(pr: PullRequestInfo, policy: Policy, data: RepoDa
     else result.passed.push(id);
   };
   const { rules } = policy;
+  await run("workflow_changes", rules.workflow_changes.enabled, () => checkWorkflowChanges(pr, policy, data));
   await run("linked_issue", rules.linked_issue.enabled, () => checkLinkedIssue(pr, policy, data));
   await run("open_pr_limit", rules.open_pr_limit.enabled, () => checkOpenPrLimit(pr, policy, data));
   await run("checklist", rules.checklist.enabled, () => checkChecklist(pr, policy));

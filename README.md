@@ -19,8 +19,20 @@ They also rejected "AI detectors" because of false positives. This action does t
 | `open_pr_limit` | A first-time contributor has no more than `max` open PRs here | on, max 1 |
 | `checklist` | Every `- [ ]` item in the description is ticked, and at least `min_items` exist | on |
 | `disclosure` | A line or section called "AI usage" (configurable) has an answer | off |
+| `workflow_changes` | The PR doesn't touch `.github/workflows/` or `.github/actions/` (configurable). Such PRs could switch off or impersonate this check, so they need maintainer review | on |
 
-Maintainers, collaborators, bots, listed users and PRs labelled `skip-gateway` are exempt.
+Exempt by default:
+
+- the repo owner
+- organization members (`MEMBER`, even without access to this repo)
+- invited collaborators (`COLLABORATOR`, with any role, including read-only)
+- bots
+- users listed by login
+- PRs labelled `skip-gateway`
+
+Narrow `exempt.associations` if that's too broad for you.
+
+For `linked_issue`, set `require_label` (for example `accepted`). Without it, a contributor can satisfy the rule by linking any open issue, including one they just opened.
 
 When a PR breaks the policy, the action:
 
@@ -44,11 +56,20 @@ Add both files from [examples/two-workflow/](examples/two-workflow/) to `.github
 - `contribution-gateway-trigger.yml` runs on `pull_request` with no permissions. It does nothing except finish.
 - `contribution-gateway.yml` starts when the trigger finishes (`workflow_run`). It runs this repository's own workflow file with a write token, looks the PR up through the API, comments and labels, and sets a commit status named `contribution-gateway`.
 
-Mark `contribution-gateway` as a required status check in branch protection if PRs shouldn't be mergeable until it passes. You can also re-check one PR by hand from the Actions tab ("Run workflow", with the PR number).
+The gate workflow also runs every 15 minutes as a **sweep**. It re-checks open PRs that have no `contribution-gateway` result yet, which is how PRs that disabled the trigger workflow still get a red status. GitHub turns off scheduled workflows in public repos after 60 days without activity, so check the Actions tab now and then. You can also re-check one PR by hand from the Actions tab ("Run workflow", with the PR number).
+
+To block merging until it passes, make `contribution-gateway` a required status check. A PR can add its own passing check with that name, but GitHub then requires *both* to pass, and the gateway's own status is red:
+
+- right away if the trigger still runs, because of `workflow_changes`
+- within one sweep if the PR disabled the trigger
+
+There's a gap of up to one sweep interval in the second case, so don't merge a PR that changes workflows without reading those changes.
 
 **Single-workflow mode**
 
-Add [examples/single-workflow.yml](examples/single-workflow.yml) as `.github/workflows/contribution-gateway.yml`. It runs on `pull_request_target`, which is simpler but is blocked in public repositories from December 2, 2026 unless an Actions event policy allows it for this workflow file (Settings → Actions → Policies). Private repositories aren't affected.
+Add [examples/single-workflow.yml](examples/single-workflow.yml) as `.github/workflows/contribution-gateway.yml`. It runs on `pull_request_target`. That's simpler, but it's blocked in public repositories from December 2, 2026 unless an Actions event policy allows it for this workflow file (Settings → Actions → Policies). Private repositories aren't affected.
+
+The result is the job's own check (`gate`). A PR can add a job with the same name, so don't use `gate` as a required status check. There's also no sweep and no per-PR update limit in this mode.
 
 ### 2. Policy and template
 
@@ -62,14 +83,43 @@ Tips for the template:
 
 ## Security model
 
-- **This action never checks out or executes PR code**, and the example workflows don't either. Keep it that way. That is what makes `pull_request_target` and `workflow_run` safe here.
-- In two-workflow mode nothing produced by the untrusted `pull_request` run (artifacts, outputs, logs) is used. The gateway only learns which branch the run was for, then reads the PR and policy itself.
-- In two-workflow mode a contributor's PR could edit or delete the trigger workflow, so the gateway never runs for it. The PR then has no `contribution-gateway` status at all. Make that status required to block merging, and treat workflow changes in a PR as a red flag.
-- The policy file is read from the PR's **base branch** through the API. A contributor can't change the rules inside their own PR.
-- It needs no secrets beyond the built-in `GITHUB_TOKEN`, with `contents: read`, `issues: write`, `pull-requests: write` and, in two-workflow mode, `statuses: write`.
+**Code and token**
+
+- **This action never checks out or executes PR code**, and the example workflows don't either. Keep it that way: that's what makes `pull_request_target` and `workflow_run` safe here.
+- In two-workflow mode, nothing produced by the untrusted `pull_request` run (artifacts, outputs, logs) is used. The gateway only learns which owner and branch the run was for. It confirms the PR it finds really has that head, then reads the PR and policy itself.
+- It needs no secrets beyond the built-in `GITHUB_TOKEN`, with these permissions:
+  - `contents: read`
+  - `issues: write`
+  - `pull-requests: read` (`write` only if the policy closes PRs)
+  - `statuses: write` (two-workflow mode)
+- **Pin the action to a full commit SHA in production.** A tag like `v0` can be moved, and this action runs with a write token on events any outsider can trigger.
+
+**Rules can't be loosened from a PR**
+
+- The policy file is read from the PR's **base branch** through the API, so a contributor can't change the rules inside their own PR.
+- A PR that edits workflow files fails `workflow_changes` until a maintainer reviews it. If it disables the trigger, the scheduled sweep still marks it red.
 - It reads the pull request live from the API rather than trusting the event payload, so re-running an old job can't act on an outdated description.
-- Bot comments never repeat text the PR author wrote, only counts, issue numbers and the policy's own wording, so a description can't make the bot post links, mentions or fake approvals.
-- At most 10 issue references are looked up per run, and comments are capped below GitHub's size limit, so a stuffed description can't drain the API quota.
+
+**Shared commits**
+
+A commit status belongs to a commit, not a PR. When several open PRs have the same head commit, they're judged together, and the status is red if any of them fails. A compliant PR can't turn a non-compliant one green.
+
+The flip side: an outsider can open a non-compliant PR from someone else's commit and turn that commit red. The status says which PR is the problem. Close that PR and re-check.
+
+**Bot output**
+
+- Bot comments never repeat text the PR author wrote.
+- They contain only counts, issue numbers (formatted as code, so the bot doesn't create cross-references) and the policy's own wording.
+
+**API quota**
+
+GitHub allows the built-in token 1,000 requests per hour per repository. A typical run makes about 6–10 requests:
+
+- at most 3 issue lookups
+- one shared list of open PRs
+- at most 3 pages of comments
+
+In two-workflow mode, a PR that gets more than 20 results within an hour is *paused*. Its status turns red with "Paused:", it isn't evaluated on further updates, and the sweep re-checks it later. A paused run costs about 2 requests.
 
 ## Outputs
 
@@ -82,12 +132,14 @@ Tips for the template:
 - `config-path`: defaults to `.github/contribution-gateway.yml`
 - `pull-request`: a PR number to check instead of the one from the event, for manual runs
 
-## Known limits (v0)
+## Known limits
 
 - References like `step #1` count as issue references. They only pass if issue #1 exists and is open.
 - The open-PR count re-runs only when that PR changes. Closing another PR doesn't re-check this one.
-- Counting open PRs stops after 1,000 to keep huge repositories fast.
 - A closed PR isn't reopened automatically after it's fixed.
+- Open PRs are listed up to 1,000 per run. In bigger repositories, newcomer counts and shared-commit grouping may be incomplete.
+- The sweep looks at the 50 most recently updated open PRs.
+- `exempt.users` matches logins. If a listed person renames or deletes their account, someone else could register that login, so keep the list current.
 - In two-workflow mode, GitHub may hold the trigger workflow for maintainer approval when a contributor is brand new to GitHub (the default "Approval for running fork pull request workflows" setting). The gateway runs once that's approved, or you can run it by hand for the PR number.
 - `exempt.bots: true` trusts any GitHub App account. If you install apps that open PRs you don't want waved through, set it to `false` and list the trusted bots in `exempt.users`.
 - GitHub may report org members with *private* membership as `CONTRIBUTOR` or `NONE`, so they aren't exempt. Make the membership public or add them to `exempt.users`.
@@ -114,6 +166,8 @@ Code map:
 - `src/config.ts`: policy schema and validation
 - `src/markdown.ts`: parsing the PR description
 - `src/evaluate.ts`: the rules
+- `src/targets.ts`: which PRs a run checks, per trigger
+- `src/aggregate.ts`: one commit status for PRs that share a commit
 - `src/github.ts`: API calls
 - `src/main.ts`: wiring
 

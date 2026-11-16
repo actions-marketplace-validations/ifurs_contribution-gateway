@@ -1838,14 +1838,14 @@ var require_request = __commonJS({
       onResponseStarted() {
         return this[kHandler].onResponseStarted?.();
       }
-      onHeaders(statusCode, headers, resume, statusText2) {
+      onHeaders(statusCode, headers, resume, statusText) {
         assert(!this.aborted);
         assert(!this.completed);
         if (channels.headers.hasSubscribers) {
-          channels.headers.publish({ request: this, response: { statusCode, headers, statusText: statusText2 } });
+          channels.headers.publish({ request: this, response: { statusCode, headers, statusText } });
         }
         try {
-          return this[kHandler].onHeaders(statusCode, headers, resume, statusText2);
+          return this[kHandler].onHeaders(statusCode, headers, resume, statusText);
         } catch (err) {
           this.abort(err);
         }
@@ -1866,12 +1866,12 @@ var require_request = __commonJS({
        * @param {import('node:stream').Duplex} socket
        * @param {string} [statusText]
        */
-      onUpgrade(statusCode, headers, socket, statusText2 = "") {
+      onUpgrade(statusCode, headers, socket, statusText = "") {
         this.onFinally();
         assert(!this.aborted);
         assert(!this.completed);
         if (statusCode !== null) {
-          this.#publishUpgradeHeaders(statusCode, headers, statusText2);
+          this.#publishUpgradeHeaders(statusCode, headers, statusText);
         }
         const result = this[kHandler].onUpgrade(statusCode, headers, socket);
         if (!this.aborted) {
@@ -1888,11 +1888,11 @@ var require_request = __commonJS({
        * @param {(headers: import('node:http2').IncomingHttpHeaders) => Buffer[]} parseHeaders
        * @param {string} [statusText]
        */
-      onUpgradeResponse(statusCode, headers, parseHeaders, statusText2 = "") {
+      onUpgradeResponse(statusCode, headers, parseHeaders, statusText = "") {
         assert(!this.aborted);
         assert(this.completed);
         if (channels.headers.hasSubscribers) {
-          this.#publishUpgradeHeaders(statusCode, parseHeaders(headers), statusText2);
+          this.#publishUpgradeHeaders(statusCode, parseHeaders(headers), statusText);
         }
         this.#publishUpgradeTrailers();
       }
@@ -1911,9 +1911,9 @@ var require_request = __commonJS({
        * @param {Buffer[]} headers
        * @param {string} statusText
        */
-      #publishUpgradeHeaders(statusCode, headers, statusText2) {
+      #publishUpgradeHeaders(statusCode, headers, statusText) {
         if (channels.headers.hasSubscribers) {
-          channels.headers.publish({ request: this, response: { statusCode, headers, statusText: statusText2 } });
+          channels.headers.publish({ request: this, response: { statusCode, headers, statusText } });
         }
       }
       #publishUpgradeTrailers() {
@@ -4141,9 +4141,9 @@ var require_util2 = __commonJS({
     function isErrorLike(object) {
       return object instanceof Error || (object?.constructor?.name === "Error" || object?.constructor?.name === "DOMException");
     }
-    function isValidReasonPhrase(statusText2) {
-      for (let i = 0; i < statusText2.length; ++i) {
-        const c = statusText2.charCodeAt(i);
+    function isValidReasonPhrase(statusText) {
+      for (let i = 0; i < statusText.length; ++i) {
+        const c = statusText.charCodeAt(i);
         if (!(c === 9 || // HTAB
         c >= 32 && c <= 126 || // SP / VCHAR
         c >= 128 && c <= 255)) {
@@ -6070,7 +6070,7 @@ var require_client_h1 = __commonJS({
         }
       }
       onUpgrade(head) {
-        const { upgrade, client, socket, headers, statusCode, statusText: statusText2 } = this;
+        const { upgrade, client, socket, headers, statusCode, statusText } = this;
         assert(upgrade);
         assert(client[kSocket] === socket);
         assert(!socket.destroyed);
@@ -6095,7 +6095,7 @@ var require_client_h1 = __commonJS({
         client[kQueue][client[kRunningIdx]++] = null;
         client.emit("disconnect", client[kUrl], [client], new InformationalError("upgrade"));
         try {
-          request2.onUpgrade(statusCode, headers, socket, statusText2);
+          request2.onUpgrade(statusCode, headers, socket, statusText);
         } catch (error2) {
           util.errorRequest(client, request2, error2);
           util.destroy(socket, error2);
@@ -6103,7 +6103,7 @@ var require_client_h1 = __commonJS({
         client[kResume]();
       }
       onHeadersComplete(statusCode, upgrade, shouldKeepAlive) {
-        const { client, socket, headers, statusText: statusText2 } = this;
+        const { client, socket, headers, statusText } = this;
         if (socket.destroyed) {
           return -1;
         }
@@ -6168,7 +6168,7 @@ var require_client_h1 = __commonJS({
         } else {
           socket[kReset] = true;
         }
-        const pause = request2.onHeaders(statusCode, headers, this.resume, statusText2) === false;
+        const pause = request2.onHeaders(statusCode, headers, this.resume, statusText) === false;
         if (request2.aborted) {
           return -1;
         }
@@ -7499,7 +7499,7 @@ var require_redirect_handler = __commonJS({
       onError(error2) {
         this.handler.onError(error2);
       }
-      onHeaders(statusCode, headers, resume, statusText2) {
+      onHeaders(statusCode, headers, resume, statusText) {
         this.location = this.history.length >= this.maxRedirections || util.isDisturbed(this.opts.body) ? null : parseLocation(statusCode, headers);
         if (this.opts.throwOnMaxRedirect && this.history.length >= this.maxRedirections) {
           if (this.request) {
@@ -7513,7 +7513,7 @@ var require_redirect_handler = __commonJS({
           this.history.push(new URL(this.opts.path, this.opts.origin));
         }
         if (!this.location) {
-          return this.handler.onHeaders(statusCode, headers, resume, statusText2);
+          return this.handler.onHeaders(statusCode, headers, resume, statusText);
         }
         const { origin, pathname, search } = util.parseURL(new URL(this.location, this.opts.origin && new URL(this.opts.path, this.opts.origin)));
         const path = search ? `${pathname}${search}` : pathname;
@@ -14327,13 +14327,13 @@ var require_fetch = __commonJS({
         })();
       }
       try {
-        const { body, status: status2, statusText: statusText2, headersList, socket } = await dispatch({ body: requestBody });
+        const { body, status: status2, statusText, headersList, socket } = await dispatch({ body: requestBody });
         if (socket) {
-          response = makeResponse({ status: status2, statusText: statusText2, headersList, socket });
+          response = makeResponse({ status: status2, statusText, headersList, socket });
         } else {
           const iterator2 = body[Symbol.asyncIterator]();
           fetchParams.controller.next = () => iterator2.next();
-          response = makeResponse({ status: status2, statusText: statusText2, headersList });
+          response = makeResponse({ status: status2, statusText, headersList });
         }
       } catch (err) {
         if (err.name === "AbortError") {
@@ -14457,7 +14457,7 @@ var require_fetch = __commonJS({
             onResponseStarted() {
               timingInfo.finalNetworkResponseStartTime = coarsenedSharedCurrentTime(fetchParams.crossOriginIsolatedCapability);
             },
-            onHeaders(status2, rawHeaders, resume, statusText2) {
+            onHeaders(status2, rawHeaders, resume, statusText) {
               if (status2 < 200) {
                 return;
               }
@@ -14508,7 +14508,7 @@ var require_fetch = __commonJS({
               const onError = this.onError.bind(this);
               resolve({
                 status: status2,
-                statusText: statusText2,
+                statusText,
                 headersList,
                 body: decoders.length ? pipeline(this.body, ...decoders, (err) => {
                   if (err) {
@@ -33305,6 +33305,85 @@ function retry(octokit, octokitOptions) {
 }
 retry.VERSION = VERSION7;
 
+// src/report.ts
+var MARKER = "<!-- contribution-gateway -->";
+var RULE_TITLES = {
+  linked_issue: "Linked issue",
+  open_pr_limit: "Open pull requests",
+  checklist: "Checklist",
+  disclosure: "Disclosure",
+  workflow_changes: "Workflow files"
+};
+var MAX_COMMENT_LENGTH = 6e4;
+function truncate(text, max = MAX_COMMENT_LENGTH) {
+  return text.length <= max ? text : `${text.slice(0, max - 40)}
+
+\u2026(truncated)`;
+}
+function failureComment(author, evaluation, policy, closed) {
+  return truncate(buildFailureComment(author, evaluation, policy, closed));
+}
+function buildFailureComment(author, evaluation, policy, closed) {
+  const lines = [MARKER, "### Contribution checks: changes needed", ""];
+  if (policy.on_violation.intro.trim()) lines.push(policy.on_violation.intro.trim(), "");
+  lines.push(`Thanks for the pull request, @${author}! Before a maintainer reviews it, please fix the following:`, "");
+  for (const v of evaluation.violations) lines.push(`- **${RULE_TITLES[v.rule]}:** ${v.message}`);
+  lines.push("");
+  if (closed) {
+    lines.push("This pull request was closed automatically. Once the points above are fixed, reopen it (or ask a maintainer to) and the checks will run again.");
+  } else {
+    lines.push("The checks run again when you edit the description or push a commit, and this comment will update.");
+  }
+  lines.push("", "<sub>Posted by contribution-gateway, using the rules in this repository's policy file.</sub>");
+  return lines.join("\n");
+}
+function passComment(exemptReason2 = null) {
+  const text = exemptReason2 ? `The contribution checks no longer apply to this pull request because ${exemptReason2}.` : "Thanks for the updates! Everything required is in place, and a maintainer will review this pull request.";
+  return [MARKER, exemptReason2 ? "### Contribution checks skipped" : "### Contribution checks passed", "", text].join("\n");
+}
+function summarize(evaluation) {
+  if (evaluation.exemptReason) return `Skipped: ${evaluation.exemptReason}.`;
+  if (evaluation.violations.length === 0) {
+    return evaluation.passed.length ? `All checks passed (${evaluation.passed.join(", ")}).` : "No rules are enabled.";
+  }
+  return [
+    `${evaluation.violations.length} check(s) failed:`,
+    ...evaluation.violations.map((v) => `- ${RULE_TITLES[v.rule]}: ${v.message}`)
+  ].join("\n");
+}
+
+// src/aggregate.ts
+var titles = (violations) => [...new Set(violations.map((v) => RULE_TITLES[v.rule]))].join(", ");
+function statusesByCommit(outcomes) {
+  const groups = /* @__PURE__ */ new Map();
+  for (const o of outcomes) groups.set(o.headSha, [...groups.get(o.headSha) ?? [], o]);
+  const result = /* @__PURE__ */ new Map();
+  for (const [sha, group] of groups) {
+    const shared = group.length > 1;
+    const failing = group.filter((o) => !o.passed && o.enforced);
+    const unenforced = group.filter((o) => !o.passed && !o.enforced);
+    let status2;
+    if (failing.length) {
+      status2 = {
+        state: "failure",
+        description: shared ? `Needs changes in ${failing.map((o) => `PR #${o.number}`).join(", ")} (these PRs share this commit)` : `Needs changes: ${titles(failing[0].violations)} (see the PR comment)`
+      };
+    } else if (unenforced.length) {
+      const dry = unenforced.some((o) => o.dryRun);
+      status2 = {
+        state: "success",
+        description: `${dry ? "Dry run, not enforced" : "Not enforced"}: ${titles(unenforced.flatMap((o) => o.violations))}`
+      };
+    } else if (!shared && group[0].exemptReason) {
+      status2 = { state: "success", description: `Skipped: ${group[0].exemptReason}` };
+    } else {
+      status2 = { state: "success", description: "All contribution checks passed" };
+    }
+    result.set(sha, status2);
+  }
+  return result;
+}
+
 // src/config.ts
 var import_yaml = __toESM(require_dist(), 1);
 var ASSOCIATIONS = [
@@ -33333,7 +33412,8 @@ var DEFAULT_POLICY = {
       applies_to: ["FIRST_TIME_CONTRIBUTOR", "FIRST_TIMER", "NONE"]
     },
     checklist: { enabled: true, require_all_checked: true, min_items: 0 },
-    disclosure: { enabled: false, heading: "AI usage" }
+    disclosure: { enabled: false, heading: "AI usage" },
+    workflow_changes: { enabled: true, paths: [".github/workflows/", ".github/actions/"] }
   },
   on_violation: {
     comment: true,
@@ -33502,7 +33582,7 @@ function hasDisclosure(body, heading) {
 }
 
 // src/evaluate.ts
-var MAX_ISSUE_LOOKUPS = 10;
+var MAX_ISSUE_LOOKUPS = 3;
 var sameLabel = (a, b) => a.toLowerCase() === b.toLowerCase();
 var hasLabel = (labels, label) => labels.some((l) => sameLabel(l, label));
 function exemptReason(pr, policy) {
@@ -33526,10 +33606,11 @@ async function checkLinkedIssue(pr, policy, data) {
   const problems = [];
   for (const { number } of refs.slice(0, MAX_ISSUE_LOOKUPS)) {
     const issue2 = await data.getIssue(number);
-    if (!issue2) problems.push(`#${number} does not exist`);
-    else if (issue2.isPullRequest) problems.push(`#${number} is a pull request, not an issue`);
-    else if (rule.require_open && issue2.state !== "open") problems.push(`#${number} is closed`);
-    else if (rule.require_label && !hasLabel(issue2.labels, rule.require_label)) problems.push(`#${number} does not have the "${rule.require_label}" label yet`);
+    const ref = `\`#${number}\``;
+    if (!issue2) problems.push(`${ref} does not exist`);
+    else if (issue2.isPullRequest) problems.push(`${ref} is a pull request, not an issue`);
+    else if (rule.require_open && issue2.state !== "open") problems.push(`${ref} is closed`);
+    else if (rule.require_label && !hasLabel(issue2.labels, rule.require_label)) problems.push(`${ref} does not have the "${rule.require_label}" label yet`);
     else return null;
   }
   if (refs.length > MAX_ISSUE_LOOKUPS) problems.push(`only the first ${MAX_ISSUE_LOOKUPS} references were checked`);
@@ -33579,6 +33660,16 @@ function checkDisclosure(pr, policy) {
     message: result.found ? `Fill in the "${heading}" section of the description.` : `Add a section called "${heading}" to the description saying whether and how AI tools were used (for example \`${heading}: none\`).`
   };
 }
+async function checkWorkflowChanges(pr, policy, data) {
+  const prefixes = policy.rules.workflow_changes.paths.map((p) => p.toLowerCase());
+  const files = await data.listChangedFiles(pr.number);
+  const touched = files.filter((f) => prefixes.some((p) => f.toLowerCase().startsWith(p)));
+  if (!touched.length) return null;
+  return {
+    rule: "workflow_changes",
+    message: `This PR changes ${touched.length} workflow or action file${touched.length === 1 ? "" : "s"}. Changes like these can alter the repository's automation, including this check, so a maintainer needs to review them first (they can add the skip label once they have).`
+  };
+}
 async function evaluate(pr, policy, data) {
   const reason = exemptReason(pr, policy);
   if (reason) return { exemptReason: reason, violations: [], passed: [] };
@@ -33590,6 +33681,7 @@ async function evaluate(pr, policy, data) {
     else result.passed.push(id);
   };
   const { rules } = policy;
+  await run2("workflow_changes", rules.workflow_changes.enabled, () => checkWorkflowChanges(pr, policy, data));
   await run2("linked_issue", rules.linked_issue.enabled, () => checkLinkedIssue(pr, policy, data));
   await run2("open_pr_limit", rules.open_pr_limit.enabled, () => checkOpenPrLimit(pr, policy, data));
   await run2("checklist", rules.checklist.enabled, () => checkChecklist(pr, policy));
@@ -33597,53 +33689,8 @@ async function evaluate(pr, policy, data) {
   return result;
 }
 
-// src/report.ts
-var MARKER = "<!-- contribution-gateway -->";
-var RULE_TITLES = {
-  linked_issue: "Linked issue",
-  open_pr_limit: "Open pull requests",
-  checklist: "Checklist",
-  disclosure: "Disclosure"
-};
-var MAX_COMMENT_LENGTH = 6e4;
-function truncate(text, max = MAX_COMMENT_LENGTH) {
-  return text.length <= max ? text : `${text.slice(0, max - 40)}
-
-\u2026(truncated)`;
-}
-function failureComment(author, evaluation, policy, closed) {
-  return truncate(buildFailureComment(author, evaluation, policy, closed));
-}
-function buildFailureComment(author, evaluation, policy, closed) {
-  const lines = [MARKER, "### Contribution checks: changes needed", ""];
-  if (policy.on_violation.intro.trim()) lines.push(policy.on_violation.intro.trim(), "");
-  lines.push(`Thanks for the pull request, @${author}! Before a maintainer reviews it, please fix the following:`, "");
-  for (const v of evaluation.violations) lines.push(`- **${RULE_TITLES[v.rule]}:** ${v.message}`);
-  lines.push("");
-  if (closed) {
-    lines.push("This pull request was closed automatically. Once the points above are fixed, reopen it (or ask a maintainer to) and the checks will run again.");
-  } else {
-    lines.push("The checks run again when you edit the description or push a commit, and this comment will update.");
-  }
-  lines.push("", "<sub>Posted by contribution-gateway, using the rules in this repository's policy file.</sub>");
-  return lines.join("\n");
-}
-function passComment(exemptReason2 = null) {
-  const text = exemptReason2 ? `The contribution checks no longer apply to this pull request because ${exemptReason2}.` : "Thanks for the updates! Everything required is in place, and a maintainer will review this pull request.";
-  return [MARKER, exemptReason2 ? "### Contribution checks skipped" : "### Contribution checks passed", "", text].join("\n");
-}
-function summarize(evaluation) {
-  if (evaluation.exemptReason) return `Skipped: ${evaluation.exemptReason}.`;
-  if (evaluation.violations.length === 0) {
-    return evaluation.passed.length ? `All checks passed (${evaluation.passed.join(", ")}).` : "No rules are enabled.";
-  }
-  return [
-    `${evaluation.violations.length} check(s) failed:`,
-    ...evaluation.violations.map((v) => `- ${RULE_TITLES[v.rule]}: ${v.message}`)
-  ].join("\n");
-}
-
 // src/targets.ts
+var SWEEP_LIMIT = 50;
 async function resolveTargets(eventName, payload, inputNumber, lookup) {
   const requested = inputNumber.trim();
   if (requested) {
@@ -33673,6 +33720,11 @@ async function resolveTargets(eventName, payload, inputNumber, lookup) {
   if (eventName === "workflow_dispatch") {
     return { numbers: [], report: "status", skip: "manual runs need the pull-request input" };
   }
+  if (eventName === "schedule") {
+    const numbers = await lookup.sweepCandidates(SWEEP_LIMIT);
+    if (!numbers.length) return { numbers: [], report: "status", sweep: true, skip: "every recently updated open PR already has a result" };
+    return { numbers, report: "status", sweep: true };
+  }
   throw new Error(
     `"${eventName}" events are not supported; use pull_request_target, or workflow_run with a pull_request trigger workflow`
   );
@@ -33683,24 +33735,30 @@ function statusDescription(text) {
 
 // src/github.ts
 var MAX_PR_PAGES = 10;
+var MAX_COMMENT_PAGES = 3;
+var MAX_FILE_PAGES = 30;
 var status = (e) => e.status;
 var STATUS_CONTEXT = "contribution-gateway";
+var PAUSED_PREFIX = "Paused:";
 var GitHubRepo = class {
   constructor(octokit, owner, repo, host = "github.com", warn = () => {
-  }) {
+  }, installationToken = false) {
     this.octokit = octokit;
     this.owner = owner;
     this.repo = repo;
     this.host = host;
     this.warn = warn;
+    this.installationToken = installationToken;
   }
   octokit;
   owner;
   repo;
   host;
   warn;
+  installationToken;
   /** Login of the token's own user, when the token can tell us (personal access tokens). */
   selfLogin;
+  openPrs;
   /**
    * Fetches the pull request as it is now. The event payload can be stale: "Re-run jobs"
    * replays the original payload, and edits can race with a run that is still going.
@@ -33744,26 +33802,56 @@ var GitHubRepo = class {
       throw e;
     }
   }
+  /** All open PRs (up to MAX_PR_PAGES pages), fetched once per run and shared by every check. */
+  listOpenPullRequests() {
+    this.openPrs ??= (async () => {
+      const result = [];
+      let pages = 0;
+      const iterator2 = this.octokit.paginate.iterator(this.octokit.rest.pulls.list, {
+        owner: this.owner,
+        repo: this.repo,
+        state: "open",
+        per_page: 100
+      });
+      for await (const page of iterator2) {
+        for (const pr of page.data) result.push({ number: pr.number, author: pr.user?.login ?? "", headSha: pr.head.sha });
+        if (++pages >= MAX_PR_PAGES) {
+          this.warn(`Stopped listing open pull requests after ${MAX_PR_PAGES * 100}; counts and shared-commit checks may be incomplete.`);
+          break;
+        }
+      }
+      return result;
+    })();
+    return this.openPrs;
+  }
   async countOpenPullRequests(login) {
-    let count = 0;
+    return (await this.listOpenPullRequests()).filter((pr) => pr.author.toLowerCase() === login.toLowerCase()).length;
+  }
+  /** Open PRs whose head is commit `sha`. They share one commit status, so they are judged together. */
+  async pullRequestsWithHead(sha) {
+    return (await this.listOpenPullRequests()).filter((pr) => pr.headSha === sha).map((pr) => pr.number);
+  }
+  async listChangedFiles(number) {
+    const files = [];
     let pages = 0;
-    const iterator2 = this.octokit.paginate.iterator(this.octokit.rest.pulls.list, {
+    const iterator2 = this.octokit.paginate.iterator(this.octokit.rest.pulls.listFiles, {
       owner: this.owner,
       repo: this.repo,
-      state: "open",
+      pull_number: number,
       per_page: 100
     });
     for await (const page of iterator2) {
-      count += page.data.filter((pr) => pr.user?.login.toLowerCase() === login.toLowerCase()).length;
-      if (++pages >= MAX_PR_PAGES) {
-        this.warn(`Stopped counting open pull requests after ${MAX_PR_PAGES * 100}; the count may be low.`);
-        break;
+      for (const f of page.data) {
+        files.push(f.filename);
+        if (f.previous_filename) files.push(f.previous_filename);
       }
+      if (++pages >= MAX_FILE_PAGES) break;
     }
-    return count;
+    return files;
   }
   /** The token's own login for personal access tokens; null for GITHUB_TOKEN and app tokens. */
   async ownLogin() {
+    if (this.installationToken) return null;
     if (this.selfLogin === void 0) {
       try {
         this.selfLogin = (await this.octokit.rest.users.getAuthenticated()).data.login;
@@ -33775,16 +33863,20 @@ var GitHubRepo = class {
   }
   /** Updates the gateway's existing comment, or creates one when `createIfMissing` is true. */
   async upsertComment(issueNumber, body, createIfMissing) {
-    const comments = await this.octokit.paginate(this.octokit.rest.issues.listComments, {
+    const own = await this.ownLogin();
+    const isOurs = (c) => Boolean(c.body?.startsWith(MARKER)) && (c.user?.type === "Bot" || own !== null && c.user?.login === own);
+    let existing;
+    let pages = 0;
+    const iterator2 = this.octokit.paginate.iterator(this.octokit.rest.issues.listComments, {
       owner: this.owner,
       repo: this.repo,
       issue_number: issueNumber,
       per_page: 100
     });
-    const own = await this.ownLogin();
-    const existing = comments.find(
-      (c) => c.body?.startsWith(MARKER) && (c.user?.type === "Bot" || own !== null && c.user?.login === own)
-    );
+    for await (const page of iterator2) {
+      existing = page.data.find(isOurs);
+      if (existing || ++pages >= MAX_COMMENT_PAGES) break;
+    }
     if (existing) {
       if (existing.body !== body) {
         await this.octokit.rest.issues.updateComment({ owner: this.owner, repo: this.repo, comment_id: existing.id, body });
@@ -33809,6 +33901,7 @@ var GitHubRepo = class {
     }
   }
   async findOpenPullRequests(headOwner, headBranch) {
+    if (!headOwner || !headBranch) return [];
     const { data } = await this.octokit.rest.pulls.list({
       owner: this.owner,
       repo: this.repo,
@@ -33816,7 +33909,39 @@ var GitHubRepo = class {
       head: `${headOwner}:${headBranch}`,
       per_page: 10
     });
-    return data.map((pr) => pr.number);
+    return data.filter((pr) => pr.head.repo?.owner.login.toLowerCase() === headOwner.toLowerCase() && pr.head.ref === headBranch).map((pr) => pr.number);
+  }
+  /**
+   * Open PRs (most recently updated first, up to `limit`) whose head commit has no gateway
+   * status yet, or a "paused" one. Used by the scheduled sweep. One GraphQL request.
+   */
+  async sweepCandidates(limit) {
+    const query = `query($owner: String!, $repo: String!, $n: Int!, $context: String!) {
+      repository(owner: $owner, name: $repo) {
+        pullRequests(states: OPEN, first: $n, orderBy: { field: UPDATED_AT, direction: DESC }) {
+          nodes { number commits(last: 1) { nodes { commit { status { context(name: $context) { description } } } } } }
+        }
+      }
+    }`;
+    const res = await this.octokit.graphql(query, {
+      owner: this.owner,
+      repo: this.repo,
+      n: limit,
+      context: STATUS_CONTEXT
+    });
+    return res.repository.pullRequests.nodes.filter((pr) => {
+      const ctx = pr.commits.nodes[0]?.commit.status?.context;
+      return !ctx || (ctx.description ?? "").startsWith(PAUSED_PREFIX);
+    }).map((pr) => pr.number);
+  }
+  /** How many gateway statuses were set on `sha` since `since` (newest 100 statuses checked). */
+  async recentStatusCount(sha, since) {
+    const { data } = await this.octokit.rest.repos.listCommitStatusesForRef({ owner: this.owner, repo: this.repo, ref: sha, per_page: 100 });
+    const ours = data.filter((s) => s.context === STATUS_CONTEXT);
+    return {
+      count: ours.filter((s) => new Date(s.created_at) >= since).length,
+      latestDescription: ours[0]?.description ?? null
+    };
   }
   async setStatus(sha, state, description, targetUrl) {
     await this.octokit.rest.repos.createCommitStatus({
@@ -33835,84 +33960,110 @@ var GitHubRepo = class {
 };
 
 // src/main.ts
-function statusText(passed, violations, exemptReason2) {
-  if (exemptReason2) return `Skipped: ${exemptReason2}`;
-  if (passed) return "All contribution checks passed";
-  return `Needs changes: ${violations.map((v) => RULE_TITLES[v.rule]).join(", ")} (see the PR comment)`;
-}
-async function checkPullRequest(gh, number, configPath, report, runUrl) {
-  const pr = await gh.getPullRequest(number);
-  if (pr.state !== "open") {
-    info(`PR #${pr.number} is ${pr.state}; nothing to check.`);
-    return null;
-  }
-  const configText = await gh.readFile(configPath, pr.baseRef);
-  if (configText === void 0) info(`No ${configPath} on ${pr.baseRef}; using the default policy.`);
-  const { policy, warnings } = parsePolicy(configText);
-  warnings.forEach((w) => warning(w));
-  const result = await evaluate(pr, policy, gh);
-  const summary2 = summarize(result);
-  const passed = result.violations.length === 0;
-  info(`PR #${pr.number}: ${summary2}`);
-  summary.addHeading(`PR #${pr.number}`, 4).addCodeBlock(summary2);
-  const outcome = { number: pr.number, passed, summary: summary2, violations: result.violations, failCheck: policy.on_violation.fail_check };
-  if (policy.mode === "dry-run") {
-    info("Dry-run mode: no comments, labels or statuses were changed.");
-    return outcome;
-  }
-  const act = policy.on_violation;
-  if (passed) {
-    if (act.comment) await gh.upsertComment(pr.number, passComment(result.exemptReason), false);
-    if (act.label) await gh.setLabel(pr.number, act.label, false, pr.labels);
-  } else {
-    if (act.comment) await gh.upsertComment(pr.number, failureComment(pr.author, result, policy, act.close), true);
-    if (act.label) await gh.setLabel(pr.number, act.label, true, pr.labels);
-  }
-  if (report === "status") {
-    const state = passed || !act.fail_check ? "success" : "failure";
-    await gh.setStatus(pr.headSha, state, statusText(passed, result.violations, result.exemptReason), runUrl);
-  }
-  if (!passed && act.close) await gh.closePullRequest(pr.number);
-  return outcome;
-}
+var MAX_RESULTS_PER_HOUR = 20;
 async function run() {
   const token = getInput("github-token", { required: true });
   const configPath = getInput("config-path") || ".github/contribution-gateway.yml";
   const { owner, repo } = context2.repo;
   const serverUrl = context2.serverUrl || "https://github.com";
   const octokit = getOctokit(token, { retry: { retries: 3 } }, retry);
-  const gh = new GitHubRepo(octokit, owner, repo, new URL(serverUrl).hostname, warning);
+  const gh = new GitHubRepo(octokit, owner, repo, new URL(serverUrl).hostname, warning, token.startsWith("ghs_"));
+  const runUrl = `${serverUrl}/${owner}/${repo}/actions/runs/${context2.runId}`;
   const targets = await resolveTargets(context2.eventName, context2.payload, getInput("pull-request"), gh);
   if (targets.skip) {
     info(`Nothing to check: ${targets.skip}.`);
     return;
   }
-  const runUrl = `${serverUrl}/${owner}/${repo}/actions/runs/${context2.runId}`;
+  const useStatus = targets.report === "status";
+  const live = /* @__PURE__ */ new Map();
+  const load = async (n) => {
+    if (!live.has(n)) live.set(n, await gh.getPullRequest(n));
+    return live.get(n);
+  };
+  const toCheck = /* @__PURE__ */ new Set();
+  for (const n of targets.numbers) {
+    const pr = await load(n);
+    if (pr.state !== "open") {
+      info(`PR #${n} is ${pr.state}; nothing to check.`);
+      continue;
+    }
+    if (useStatus && !targets.sweep) {
+      const recent = await gh.recentStatusCount(pr.headSha, new Date(Date.now() - 36e5));
+      if (recent.count >= MAX_RESULTS_PER_HOUR) {
+        warning(`PR #${n} was checked ${recent.count} times in the last hour; pausing it until the scheduled sweep.`);
+        if (!(recent.latestDescription ?? "").startsWith(PAUSED_PREFIX)) {
+          await gh.setStatus(pr.headSha, "failure", `${PAUSED_PREFIX} updated too often; it will be re-checked by the scheduled sweep`, runUrl);
+        }
+        continue;
+      }
+    }
+    toCheck.add(n);
+    if (useStatus) for (const other of await gh.pullRequestsWithHead(pr.headSha)) toCheck.add(other);
+  }
+  const policies = /* @__PURE__ */ new Map();
+  const evaluated = [];
+  for (const n of toCheck) {
+    const pr = await load(n);
+    if (pr.state !== "open") continue;
+    if (!policies.has(pr.baseRef)) {
+      const text = await gh.readFile(configPath, pr.baseRef);
+      if (text === void 0) info(`No ${configPath} on ${pr.baseRef}; using the default policy.`);
+      const { policy: policy2, warnings } = parsePolicy(text);
+      warnings.forEach((w) => warning(w));
+      policies.set(pr.baseRef, policy2);
+    }
+    const policy = policies.get(pr.baseRef);
+    const result = await evaluate(pr, policy, gh);
+    info(`PR #${pr.number}: ${summarize(result)}`);
+    evaluated.push({ pr, policy, result });
+  }
   summary.addHeading("Contribution gateway", 3);
-  const outcomes = [];
+  for (const { pr, result } of evaluated) summary.addHeading(`PR #${pr.number}`, 4).addCodeBlock(summarize(result));
+  await summary.write();
   try {
-    for (const number of targets.numbers) {
-      const outcome = await checkPullRequest(gh, number, configPath, targets.report, runUrl);
-      if (outcome) outcomes.push(outcome);
+    for (const { pr, policy, result } of evaluated) {
+      if (policy.mode === "dry-run") continue;
+      const act = policy.on_violation;
+      const passed = result.violations.length === 0;
+      if (passed) {
+        if (act.comment) await gh.upsertComment(pr.number, passComment(result.exemptReason), false);
+        if (act.label) await gh.setLabel(pr.number, act.label, false, pr.labels);
+      } else {
+        if (act.comment) await gh.upsertComment(pr.number, failureComment(pr.author, result, policy, act.close), true);
+        if (act.label) await gh.setLabel(pr.number, act.label, true, pr.labels);
+      }
+    }
+    const outcomes = evaluated.map(({ pr, policy, result }) => ({
+      number: pr.number,
+      headSha: pr.headSha,
+      passed: result.violations.length === 0,
+      enforced: policy.mode === "enforce" && policy.on_violation.fail_check,
+      dryRun: policy.mode === "dry-run",
+      violations: result.violations,
+      exemptReason: result.exemptReason
+    }));
+    if (useStatus) {
+      for (const [sha, s] of statusesByCommit(outcomes)) await gh.setStatus(sha, s.state, s.description, runUrl);
+    }
+    for (const { pr, policy, result } of evaluated) {
+      if (policy.mode === "enforce" && policy.on_violation.close && result.violations.length) await gh.closePullRequest(pr.number);
     }
   } catch (e) {
     if (status(e) === 403) {
       throw new Error(
-        "GitHub refused a write (403). Grant `issues: write`, `pull-requests: write` and (for workflow_run) `statuses: write`. For pull requests from forks, run this action on `pull_request_target` or `workflow_run`, not `pull_request`.",
+        "GitHub refused a write (403). Grant `issues: write`, `pull-requests: read` (or `write` to close PRs) and, for workflow_run, `statuses: write`. For pull requests from forks, run this action on `pull_request_target` or `workflow_run`, not `pull_request`.",
         { cause: e }
       );
     }
     throw e;
-  } finally {
-    await summary.write();
   }
-  setOutput("passed", String(outcomes.every((o) => o.passed)));
+  setOutput("passed", String(evaluated.every((e) => e.result.violations.length === 0)));
   setOutput(
     "violations",
-    JSON.stringify(outcomes.flatMap((o) => o.violations.map((v) => ({ pull_request: o.number, ...v }))))
+    JSON.stringify(evaluated.flatMap((e) => e.result.violations.map((v) => ({ pull_request: e.pr.number, ...v }))))
   );
-  const failing = outcomes.filter((o) => !o.passed && o.failCheck);
-  if (targets.report === "job" && failing.length) setFailed(failing.map((o) => o.summary).join("\n"));
+  const failing = evaluated.filter((e) => e.result.violations.length && e.policy.mode === "enforce" && e.policy.on_violation.fail_check);
+  if (!useStatus && failing.length) setFailed(failing.map((e) => `PR #${e.pr.number}: ${summarize(e.result)}`).join("\n"));
 }
 async function main() {
   try {

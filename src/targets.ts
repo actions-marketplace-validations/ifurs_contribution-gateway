@@ -7,14 +7,22 @@
  *   this run finds that PR through the API and reports with a commit status. Nothing from
  *   the untrusted run (artifacts, outputs) is used, only which branch it ran for.
  * - `workflow_dispatch`: a maintainer re-checks one PR by number.
+ * - `schedule`: a sweep re-checks open PRs that have no gateway status on their head commit
+ *   (for example because the PR disabled the trigger workflow) or were paused for too many
+ *   updates. It runs from the default branch, so a PR cannot switch it off.
  */
 
 export type ReportStyle = "job" | "status";
+
+/** How many recently updated open PRs one sweep looks at. */
+export const SWEEP_LIMIT = 50;
 
 export interface Targets {
   numbers: number[];
   /** "job": fail this job on violations. "status": set a commit status on the PR instead. */
   report: ReportStyle;
+  /** Scheduled sweep: not subject to the per-PR update budget. */
+  sweep?: boolean;
   /** Why there is nothing to do, for the log. */
   skip?: string;
 }
@@ -29,6 +37,8 @@ interface WorkflowRunPayload {
 export interface TargetLookup {
   /** Open PRs in this repository whose head is `owner:branch`. */
   findOpenPullRequests(headOwner: string, headBranch: string): Promise<number[]>;
+  /** Open PRs whose head commit has no gateway status yet, or a paused one. */
+  sweepCandidates(limit: number): Promise<number[]>;
 }
 
 export async function resolveTargets(
@@ -68,6 +78,12 @@ export async function resolveTargets(
 
   if (eventName === "workflow_dispatch") {
     return { numbers: [], report: "status", skip: "manual runs need the pull-request input" };
+  }
+
+  if (eventName === "schedule") {
+    const numbers = await lookup.sweepCandidates(SWEEP_LIMIT);
+    if (!numbers.length) return { numbers: [], report: "status", sweep: true, skip: "every recently updated open PR already has a result" };
+    return { numbers, report: "status", sweep: true };
   }
 
   throw new Error(
