@@ -1,5 +1,6 @@
 import * as core from "@actions/core";
 import { context, getOctokit } from "@actions/github";
+import { retry } from "@octokit/plugin-retry";
 import { ConfigError, parsePolicy } from "./config";
 import { evaluate, type Violation } from "./evaluate";
 import { GitHubRepo, httpStatus } from "./github";
@@ -77,7 +78,10 @@ export async function run(): Promise<void> {
   const configPath = core.getInput("config-path") || ".github/contribution-gateway.yml";
   const { owner, repo } = context.repo;
   const serverUrl = context.serverUrl || "https://github.com";
-  const gh = new GitHubRepo(getOctokit(token), owner, repo, new URL(serverUrl).hostname, core.warning);
+  // GitHub occasionally answers with a 5xx; retry those (with backoff) so one blip doesn't
+  // leave a PR with a stale comment or status. 4xx answers such as 404 are not retried.
+  const octokit = getOctokit(token, { retry: { retries: 3 } }, retry);
+  const gh = new GitHubRepo(octokit, owner, repo, new URL(serverUrl).hostname, core.warning);
 
   const targets = await resolveTargets(context.eventName, context.payload, core.getInput("pull-request"), gh);
   if (targets.skip) {
