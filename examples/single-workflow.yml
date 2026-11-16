@@ -19,7 +19,7 @@ on:
 permissions:
   contents: read        # read the policy file from the base branch
   issues: write         # comments and labels (PRs are issues in the API)
-  pull-requests: read   # read PRs and their files; use `write` if the policy sets `close: true`
+  pull-requests: write  # comment on and label PRs (required even with issues: write), close if the policy says to
 
 concurrency:
   group: contribution-gateway-${{ github.event.pull_request.number }}

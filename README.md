@@ -90,7 +90,7 @@ Tips for the template:
 - It needs no secrets beyond the built-in `GITHUB_TOKEN`, with these permissions:
   - `contents: read`
   - `issues: write`
-  - `pull-requests: read` (`write` only if the policy closes PRs)
+  - `pull-requests: write` (commenting on a PR needs it, even with `issues: write`)
   - `statuses: write` (two-workflow mode)
 - **Pin the action to a full commit SHA in production.** A tag like `v0` can be moved, and this action runs with a write token on events any outsider can trigger.
 

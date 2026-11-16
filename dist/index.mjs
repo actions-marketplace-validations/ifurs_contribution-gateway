@@ -34021,18 +34021,6 @@ async function run() {
   for (const { pr, result } of evaluated) summary.addHeading(`PR #${pr.number}`, 4).addCodeBlock(summarize(result));
   await summary.write();
   try {
-    for (const { pr, policy, result } of evaluated) {
-      if (policy.mode === "dry-run") continue;
-      const act = policy.on_violation;
-      const passed = result.violations.length === 0;
-      if (passed) {
-        if (act.comment) await gh.upsertComment(pr.number, passComment(result.exemptReason), false);
-        if (act.label) await gh.setLabel(pr.number, act.label, false, pr.labels);
-      } else {
-        if (act.comment) await gh.upsertComment(pr.number, failureComment(pr.author, result, policy, act.close), true);
-        if (act.label) await gh.setLabel(pr.number, act.label, true, pr.labels);
-      }
-    }
     const outcomes = evaluated.map(({ pr, policy, result }) => ({
       number: pr.number,
       headSha: pr.headSha,
@@ -34046,12 +34034,24 @@ async function run() {
       for (const [sha, s] of statusesByCommit(outcomes)) await gh.setStatus(sha, s.state, s.description, runUrl);
     }
     for (const { pr, policy, result } of evaluated) {
+      if (policy.mode === "dry-run") continue;
+      const act = policy.on_violation;
+      const passed = result.violations.length === 0;
+      if (passed) {
+        if (act.comment) await gh.upsertComment(pr.number, passComment(result.exemptReason), false);
+        if (act.label) await gh.setLabel(pr.number, act.label, false, pr.labels);
+      } else {
+        if (act.comment) await gh.upsertComment(pr.number, failureComment(pr.author, result, policy, act.close), true);
+        if (act.label) await gh.setLabel(pr.number, act.label, true, pr.labels);
+      }
+    }
+    for (const { pr, policy, result } of evaluated) {
       if (policy.mode === "enforce" && policy.on_violation.close && result.violations.length) await gh.closePullRequest(pr.number);
     }
   } catch (e) {
     if (status(e) === 403) {
       throw new Error(
-        "GitHub refused a write (403). Grant `issues: write`, `pull-requests: read` (or `write` to close PRs) and, for workflow_run, `statuses: write`. For pull requests from forks, run this action on `pull_request_target` or `workflow_run`, not `pull_request`.",
+        "GitHub refused a write (403). Grant `issues: write`, `pull-requests: write` and, for workflow_run, `statuses: write`. For pull requests from forks, run this action on `pull_request_target` or `workflow_run`, not `pull_request`.",
         { cause: e }
       );
     }

@@ -91,8 +91,23 @@ export async function run(): Promise<void> {
   for (const { pr, result } of evaluated) core.summary.addHeading(`PR #${pr.number}`, 4).addCodeBlock(summarize(result));
   await core.summary.write();
 
-  // 4. Comments, labels and closing, per PR.
   try {
+    // 4. One status per head commit (two-workflow mode). Written first, so the PR's check is
+    //    right even if a later comment or label write fails.
+    const outcomes: PrOutcome[] = evaluated.map(({ pr, policy, result }) => ({
+      number: pr.number,
+      headSha: pr.headSha,
+      passed: result.violations.length === 0,
+      enforced: policy.mode === "enforce" && policy.on_violation.fail_check,
+      dryRun: policy.mode === "dry-run",
+      violations: result.violations,
+      exemptReason: result.exemptReason,
+    }));
+    if (useStatus) {
+      for (const [sha, s] of statusesByCommit(outcomes)) await gh.setStatus(sha, s.state, s.description, runUrl);
+    }
+
+    // 5. Comments, labels and closing, per PR.
     for (const { pr, policy, result } of evaluated) {
       if (policy.mode === "dry-run") continue;
       const act = policy.on_violation;
@@ -107,27 +122,13 @@ export async function run(): Promise<void> {
       }
     }
 
-    // 5. One status per head commit (two-workflow mode).
-    const outcomes: PrOutcome[] = evaluated.map(({ pr, policy, result }) => ({
-      number: pr.number,
-      headSha: pr.headSha,
-      passed: result.violations.length === 0,
-      enforced: policy.mode === "enforce" && policy.on_violation.fail_check,
-      dryRun: policy.mode === "dry-run",
-      violations: result.violations,
-      exemptReason: result.exemptReason,
-    }));
-    if (useStatus) {
-      for (const [sha, s] of statusesByCommit(outcomes)) await gh.setStatus(sha, s.state, s.description, runUrl);
-    }
-
     for (const { pr, policy, result } of evaluated) {
       if (policy.mode === "enforce" && policy.on_violation.close && result.violations.length) await gh.closePullRequest(pr.number);
     }
   } catch (e) {
     if (httpStatus(e) === 403) {
       throw new Error(
-        "GitHub refused a write (403). Grant `issues: write`, `pull-requests: read` (or `write` to close PRs) and, for workflow_run, `statuses: write`. " +
+        "GitHub refused a write (403). Grant `issues: write`, `pull-requests: write` and, for workflow_run, `statuses: write`. " +
           "For pull requests from forks, run this action on `pull_request_target` or `workflow_run`, not `pull_request`.",
         { cause: e },
       );
