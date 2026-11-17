@@ -12,6 +12,7 @@ exempt:
   users: []                                    # logins, e.g. [trusted-friend]; remove people who rename or delete their account
   bots: true                                   # dependabot, renovate, ...
   labels: [skip-gateway]                       # a maintainer can add this label to wave a PR through
+  drafts: true                                 # skip drafts until they're marked ready for review (drafts can't be merged)
 
 rules:
   linked_issue:
@@ -19,8 +20,10 @@ rules:
     require_open: true
     require_label: ""        # recommended, e.g. "accepted": without it, contributors can link any open issue, even one they just opened
 
+  # Prefer GitHub's built-in pull request limits (Settings → Moderation → Interaction limits):
+  # they stop extra PRs from being opened at all. This rule is a fallback where those aren't available.
   open_pr_limit:
-    enabled: true
+    enabled: false
     max: 1
     applies_to: [FIRST_TIME_CONTRIBUTOR, FIRST_TIMER, NONE]
 

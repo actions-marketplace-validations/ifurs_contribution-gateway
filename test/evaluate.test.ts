@@ -34,7 +34,7 @@ describe("evaluate", () => {
   it("passes a well-formed PR", async () => {
     const r = await evaluate(pr(), policy(), fakeRepo({ 1: openIssue }));
     expect(r.violations).toEqual([]);
-    expect(r.passed).toEqual(["workflow_changes", "linked_issue", "open_pr_limit", "checklist"]);
+    expect(r.passed).toEqual(["workflow_changes", "linked_issue", "checklist"]);
   });
 
   it("exempts maintainers, bots, listed users and labels", async () => {
@@ -70,10 +70,21 @@ describe("evaluate", () => {
 
   it("limits open PRs only for the configured associations", async () => {
     const tooMany = fakeRepo({ 1: openIssue }, 3);
-    const r = await evaluate(pr(), policy(), tooMany);
+    const on = policy("rules: { open_pr_limit: { enabled: true } }");
+    const r = await evaluate(pr(), on, tooMany);
     expect(r.violations).toEqual([{ rule: "open_pr_limit", message: expect.stringContaining("has 3") }]);
-    const returning = await evaluate(pr({ association: "CONTRIBUTOR" }), policy(), tooMany);
+    const returning = await evaluate(pr({ association: "CONTRIBUTOR" }), on, tooMany);
     expect(returning.violations).toEqual([]);
+  });
+
+  it("leaves the open-PR limit off by default (GitHub's built-in limits are preferred)", async () => {
+    expect((await evaluate(pr(), policy(), fakeRepo({ 1: openIssue }, 9))).violations).toEqual([]);
+  });
+
+  it("skips drafts by default and checks them when exempt.drafts is off", async () => {
+    const draft = pr({ draft: true, body: "" });
+    expect((await evaluate(draft, policy(), fakeRepo({}))).exemptReason).toMatch(/draft/);
+    expect((await evaluate(draft, policy("exempt: { drafts: false }"), fakeRepo({}))).violations.length).toBeGreaterThan(0);
   });
 
   it("checks the checklist and the disclosure section", async () => {

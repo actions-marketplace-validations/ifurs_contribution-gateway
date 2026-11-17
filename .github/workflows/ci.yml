@@ -26,7 +26,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
-      - run: npm test
+      - name: Unit and integration tests, with minimum coverage
+        run: npm run coverage
       - name: End-to-end runs against a mock GitHub API
         run: npm run e2e
       - name: dist/ must match the source

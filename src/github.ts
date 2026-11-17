@@ -59,6 +59,7 @@ export class GitHubRepo implements RepoData, TargetLookup {
       state: data.state,
       baseRef: data.base.ref,
       headSha: data.head.sha,
+      draft: Boolean(data.draft),
       author: data.user.login,
       authorType: data.user.type,
       association: data.author_association,

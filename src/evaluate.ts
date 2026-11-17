@@ -15,6 +15,8 @@ export interface PullRequestInfo {
   association: string;
   body: string;
   labels: string[];
+  /** Draft PRs are skipped when `exempt.drafts` is on. */
+  draft?: boolean;
 }
 
 export interface IssueInfo {
@@ -61,6 +63,7 @@ export const hasLabel = (labels: string[], label: string) => labels.some((l) => 
 
 export function exemptReason(pr: PullRequestInfo, policy: Policy): string | null {
   const { exempt } = policy;
+  if (exempt.drafts && pr.draft) return "the PR is a draft (it will be checked when it's marked ready for review)";
   if (exempt.bots && (pr.authorType === "Bot" || pr.author.endsWith("[bot]"))) return `@${pr.author} is a bot`;
   if (exempt.users.some((u) => u.toLowerCase() === pr.author.toLowerCase())) return `@${pr.author} is on the exempt list`;
   if ((exempt.associations as string[]).includes(pr.association)) return `@${pr.author} is a ${pr.association.toLowerCase()}`;

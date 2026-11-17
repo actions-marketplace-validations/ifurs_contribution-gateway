@@ -21,18 +21,43 @@ interface Evaluated {
   result: Evaluation;
 }
 
-export async function run(): Promise<void> {
+/** What a run needs from its environment. Tests pass their own; Actions uses `fromActions()`. */
+export interface RunContext {
+  eventName: string;
+  payload: Record<string, unknown>;
+  owner: string;
+  repo: string;
+  runId: number;
+  serverUrl: string;
+  apiUrl: string;
+  /** Delay before each 5xx retry, in ms. */
+  retryAfterMs?: number;
+}
+
+export function fromActions(): RunContext {
+  return {
+    eventName: context.eventName,
+    payload: context.payload,
+    owner: context.repo.owner,
+    repo: context.repo.repo,
+    runId: context.runId,
+    serverUrl: context.serverUrl || "https://github.com",
+    apiUrl: process.env.GITHUB_API_URL || "https://api.github.com",
+  };
+}
+
+export async function run(ctx: RunContext = fromActions()): Promise<void> {
   const token = core.getInput("github-token", { required: true });
   const configPath = core.getInput("config-path") || ".github/contribution-gateway.yml";
-  const { owner, repo } = context.repo;
-  const serverUrl = context.serverUrl || "https://github.com";
+  const { owner, repo, serverUrl } = ctx;
   // GitHub occasionally answers with a 5xx; retry those (with backoff) so one blip doesn't
   // leave a PR with a stale comment or status. 4xx answers such as 404 are not retried.
-  const octokit = getOctokit(token, { retry: { retries: 3 } }, retry);
+  const retryOptions = { retries: 3, ...(ctx.retryAfterMs !== undefined ? { retryAfterBaseValue: ctx.retryAfterMs } : {}) };
+  const octokit = getOctokit(token, { baseUrl: ctx.apiUrl, retry: retryOptions }, retry);
   const gh = new GitHubRepo(octokit, owner, repo, new URL(serverUrl).hostname, core.warning, token.startsWith("ghs_"));
-  const runUrl = `${serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+  const runUrl = `${serverUrl}/${owner}/${repo}/actions/runs/${ctx.runId}`;
 
-  const targets = await resolveTargets(context.eventName, context.payload, core.getInput("pull-request"), gh);
+  const targets = await resolveTargets(ctx.eventName, ctx.payload, core.getInput("pull-request"), gh);
   if (targets.skip) {
     core.info(`Nothing to check: ${targets.skip}.`);
     return;
@@ -148,9 +173,9 @@ export async function run(): Promise<void> {
   if (!useStatus && failing.length) core.setFailed(failing.map((e) => `PR #${e.pr.number}: ${summarize(e.result)}`).join("\n"));
 }
 
-export async function main(): Promise<void> {
+export async function main(ctx?: RunContext): Promise<void> {
   try {
-    await run();
+    await run(ctx);
   } catch (e) {
     const err = e as Error;
     core.setFailed(err instanceof ConfigError ? `Invalid policy file: ${err.message}` : err.message);

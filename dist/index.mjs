@@ -33402,12 +33402,13 @@ var DEFAULT_POLICY = {
     associations: ["OWNER", "MEMBER", "COLLABORATOR"],
     users: [],
     bots: true,
-    labels: ["skip-gateway"]
+    labels: ["skip-gateway"],
+    drafts: true
   },
   rules: {
     linked_issue: { enabled: true, require_open: true, require_label: "" },
     open_pr_limit: {
-      enabled: true,
+      enabled: false,
       max: 1,
       applies_to: ["FIRST_TIME_CONTRIBUTOR", "FIRST_TIMER", "NONE"]
     },
@@ -33587,6 +33588,7 @@ var sameLabel = (a, b) => a.toLowerCase() === b.toLowerCase();
 var hasLabel = (labels, label) => labels.some((l) => sameLabel(l, label));
 function exemptReason(pr, policy) {
   const { exempt } = policy;
+  if (exempt.drafts && pr.draft) return "the PR is a draft (it will be checked when it's marked ready for review)";
   if (exempt.bots && (pr.authorType === "Bot" || pr.author.endsWith("[bot]"))) return `@${pr.author} is a bot`;
   if (exempt.users.some((u) => u.toLowerCase() === pr.author.toLowerCase())) return `@${pr.author} is on the exempt list`;
   if (exempt.associations.includes(pr.association)) return `@${pr.author} is a ${pr.association.toLowerCase()}`;
@@ -33772,6 +33774,7 @@ var GitHubRepo = class {
       state: data.state,
       baseRef: data.base.ref,
       headSha: data.head.sha,
+      draft: Boolean(data.draft),
       author: data.user.login,
       authorType: data.user.type,
       association: data.author_association,
@@ -33973,15 +33976,26 @@ var GitHubRepo = class {
 
 // src/main.ts
 var MAX_RESULTS_PER_HOUR = 20;
-async function run() {
+function fromActions() {
+  return {
+    eventName: context2.eventName,
+    payload: context2.payload,
+    owner: context2.repo.owner,
+    repo: context2.repo.repo,
+    runId: context2.runId,
+    serverUrl: context2.serverUrl || "https://github.com",
+    apiUrl: process.env.GITHUB_API_URL || "https://api.github.com"
+  };
+}
+async function run(ctx = fromActions()) {
   const token = getInput("github-token", { required: true });
   const configPath = getInput("config-path") || ".github/contribution-gateway.yml";
-  const { owner, repo } = context2.repo;
-  const serverUrl = context2.serverUrl || "https://github.com";
-  const octokit = getOctokit(token, { retry: { retries: 3 } }, retry);
+  const { owner, repo, serverUrl } = ctx;
+  const retryOptions = { retries: 3, ...ctx.retryAfterMs !== void 0 ? { retryAfterBaseValue: ctx.retryAfterMs } : {} };
+  const octokit = getOctokit(token, { baseUrl: ctx.apiUrl, retry: retryOptions }, retry);
   const gh = new GitHubRepo(octokit, owner, repo, new URL(serverUrl).hostname, warning, token.startsWith("ghs_"));
-  const runUrl = `${serverUrl}/${owner}/${repo}/actions/runs/${context2.runId}`;
-  const targets = await resolveTargets(context2.eventName, context2.payload, getInput("pull-request"), gh);
+  const runUrl = `${serverUrl}/${owner}/${repo}/actions/runs/${ctx.runId}`;
+  const targets = await resolveTargets(ctx.eventName, ctx.payload, getInput("pull-request"), gh);
   if (targets.skip) {
     info(`Nothing to check: ${targets.skip}.`);
     return;
@@ -34077,9 +34091,9 @@ async function run() {
   const failing = evaluated.filter((e) => e.result.violations.length && e.policy.mode === "enforce" && e.policy.on_violation.fail_check);
   if (!useStatus && failing.length) setFailed(failing.map((e) => `PR #${e.pr.number}: ${summarize(e.result)}`).join("\n"));
 }
-async function main() {
+async function main(ctx) {
   try {
-    await run();
+    await run(ctx);
   } catch (e) {
     const err = e;
     setFailed(err instanceof ConfigError ? `Invalid policy file: ${err.message}` : err.message);

@@ -21,6 +21,8 @@ export interface Policy {
     users: string[];
     bots: boolean;
     labels: string[];
+    /** Draft PRs are skipped until they're marked ready for review (drafts can't be merged). */
+    drafts: boolean;
   };
   rules: {
     linked_issue: {
@@ -30,6 +32,10 @@ export interface Policy {
       /** If set, the referenced issue must carry this label (e.g. "accepted"). */
       require_label: string;
     };
+    /**
+     * Off by default: GitHub's built-in pull request limits (Settings → Moderation → Interaction
+     * limits) stop extra PRs from being opened at all. Use this only where those aren't available.
+     */
     open_pr_limit: {
       enabled: boolean;
       /** Maximum open PRs (including this one) an author in `applies_to` may have. */
@@ -75,11 +81,12 @@ export const DEFAULT_POLICY: Policy = {
     users: [],
     bots: true,
     labels: ["skip-gateway"],
+    drafts: true,
   },
   rules: {
     linked_issue: { enabled: true, require_open: true, require_label: "" },
     open_pr_limit: {
-      enabled: true,
+      enabled: false,
       max: 1,
       applies_to: ["FIRST_TIME_CONTRIBUTOR", "FIRST_TIMER", "NONE"],
     },

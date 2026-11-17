@@ -14,7 +14,7 @@ on:
   # and label pull requests from forks. It is safe here because this workflow never checks
   # out or runs the pull request's code. Do not add actions/checkout of the PR head to it.
   pull_request_target:
-    types: [opened, edited, reopened, synchronize, labeled, unlabeled]
+    types: [opened, edited, reopened, synchronize, labeled, unlabeled, ready_for_review, converted_to_draft]
 
 permissions:
   contents: read        # read the policy file from the base branch
