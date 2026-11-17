@@ -1,0 +1,36 @@
+# Part 2 of 2: runs from the default branch, checks the PR through the API and sets the
+# "contribution-gateway" status. It never checks out or runs pull request code, and it uses
+# the latest release (pinned by SHA; Dependabot updates it), not the code in this repository.
+name: Contribution gateway
+
+on:
+  workflow_run:
+    workflows: ["Contribution gateway trigger"]   # must match the trigger workflow's name
+    types: [completed]
+  schedule:
+    # Sweep: re-checks open PRs that have no result yet (e.g. a PR that disabled the trigger
+    # workflow) or were paused for too many updates. GitHub may delay scheduled runs.
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Pull request number to re-check
+        required: true
+
+permissions:
+  contents: read        # read the policy file from the base branch
+  issues: write         # comments and labels (PRs are issues in the API)
+  pull-requests: write  # comment on and label PRs (required even with issues: write), close if the policy says to
+  statuses: write       # the "contribution-gateway" status on the PR
+
+concurrency:
+  group: contribution-gateway-${{ github.event.workflow_run.head_repository.full_name || github.event_name }}-${{ github.event.workflow_run.head_branch || inputs.pr || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'workflow_run' }}
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ifurs/contribution-gateway@c5e79201353115214dcf7bf69f874dd792234a4d  # v0.3.0
+        with:
+          pull-request: ${{ inputs.pr }}

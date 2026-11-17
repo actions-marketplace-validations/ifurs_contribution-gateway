@@ -260,7 +260,7 @@ npm run build      # bundles dist/index.mjs and writes dist/licenses.txt; commit
 npm run e2e        # runs the built bundle against a mock GitHub API
 ```
 
-CI runs all of these on every push and PR, and fails if coverage drops or `dist/` doesn't match the source. The integration tests run the whole action against a stateful fake GitHub API ([test/support/mock-github.ts](test/support/mock-github.ts)). A live sandbox, [ifurs/gateway-sandbox](https://github.com/ifurs/gateway-sandbox), is used for end-to-end checks on real GitHub.
+CI runs all of these on every push and PR, and fails if coverage drops or `dist/` doesn't match the source. The integration tests run the whole action against a stateful fake GitHub API ([test/support/mock-github.ts](test/support/mock-github.ts)). A live sandbox, [ifurs/gateway-sandbox](https://github.com/ifurs/gateway-sandbox), is used for end-to-end checks on real GitHub, and this repository checks its own pull requests with the latest release (see [CONTRIBUTING.md](CONTRIBUTING.md)).
 
 **Code map**
 

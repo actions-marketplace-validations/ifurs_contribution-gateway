@@ -1,0 +1,15 @@
+# This repository checks its own pull requests with Contribution Gateway (two-workflow mode).
+# Part 1 of 2: runs for every PR with no permissions. Finishing starts part 2.
+name: Contribution gateway trigger
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize, labeled, unlabeled, ready_for_review, converted_to_draft]
+
+permissions: {}
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "The checks run in the 'Contribution gateway' workflow."

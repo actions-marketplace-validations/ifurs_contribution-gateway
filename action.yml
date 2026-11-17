@@ -1,5 +1,5 @@
 name: Contribution Gateway
-description: Checks pull requests against a maintainer-written policy (linked issue, newcomer PR limit, checklist, disclosure) with clear, friendly feedback. Runs on pull_request_target or workflow_run.
+description: Checks each pull request against your contribution policy (linked issue, checklist, AI disclosure) and says what to fix.
 author: contribution-gateway contributors
 branding:
   icon: shield
