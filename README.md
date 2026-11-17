@@ -169,8 +169,11 @@ In two-workflow mode, a PR that gets more than 20 results within an hour is *pau
 npm install
 npm test          # unit tests (vitest)
 npm run typecheck
-npm run build     # bundles to dist/index.mjs, which must be committed
+npm run build     # bundles to dist/index.mjs and writes dist/licenses.txt; commit both
+npm run e2e       # runs the built action against a mock GitHub API
 ```
+
+CI runs all of these on every push and PR, and fails if `dist/` doesn't match the source. Security issues: see [SECURITY.md](SECURITY.md).
 
 Code map:
 

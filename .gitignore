@@ -1,2 +1,3 @@
 node_modules/
 # dist/ is committed on purpose: GitHub runs the action from it.
+build-meta.json

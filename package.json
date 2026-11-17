@@ -1,6 +1,6 @@
 {
   "name": "contribution-gateway",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Policy-as-config gate for pull requests: linked issues, newcomer PR limits, checklists and disclosure, with no AI guessing.",
   "private": true,
   "type": "module",
@@ -9,9 +9,10 @@
     "node": ">=24"
   },
   "scripts": {
-    "build": "esbuild src/index.ts --bundle --platform=node --target=node24 --format=esm --outfile=dist/index.mjs --banner:js=\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\"",
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node24 --format=esm --outfile=dist/index.mjs --metafile=build-meta.json --banner:js=\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\" && node scripts/licenses.mjs build-meta.json",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "e2e": "node scripts/e2e-mock.mjs ."
   },
   "dependencies": {
     "@actions/core": "^3.0.1",
