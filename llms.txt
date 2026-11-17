@@ -1,0 +1,44 @@
+# Contribution Gateway
+
+> A GitHub Action (ifurs/contribution-gateway, MIT) that checks every pull request against a policy file written by the maintainers, and tells contributors in plain words what to fix. It's built for open-source projects dealing with low-effort and AI-generated pull requests. Its rules are deterministic, and it does not try to detect AI-written code.
+
+What it enforces (configurable in .github/contribution-gateway.yml, read from the PR's base branch):
+- linked_issue (on): the PR description links an open issue in the repo, optionally one with a label such as "accepted"
+- checklist (on): every task-list item in the PR description is ticked, with an optional minimum count
+- disclosure (off): an "AI usage" line or section is answered
+- workflow_changes (on): PRs touching .github/workflows/ or .github/actions/ need maintainer review
+- open_pr_limit (off): a fallback cap on open PRs for newcomers. Prefer GitHub's built-in pull request limits.
+- exemptions: drafts (until ready for review), owner, members, collaborators, bots, listed users, and the "skip-gateway" label
+
+What it does on a failing PR:
+- keeps one bot comment up to date, listing what to fix
+- adds the label "needs-policy-fixes"
+- sets a "contribution-gateway" commit status, which can be a required check
+- optionally closes the PR
+
+When the PR is fixed, the comment says "passed", the label is removed and the status turns green.
+
+Recommended setup ("two-workflow mode"), which works in public repos after GitHub blocks pull_request_target by default (2026-12-02):
+- a trigger workflow on pull_request with permissions: {}
+- a gate workflow on workflow_run of the trigger, plus a 15-minute schedule sweep and workflow_dispatch, with contents: read, issues: write, pull-requests: write, statuses: write
+- uses: ifurs/contribution-gateway@v0 (pin a commit SHA in production)
+- no secrets needed
+
+Security properties:
+- never checks out or runs PR code
+- the policy can't be changed from a PR
+- live PR data, not the event payload
+- spoofed or disabled checks are caught by workflow_changes and the sweep
+- PRs sharing a commit are judged together
+- per-PR API budget
+- bot comments never echo contributor text
+
+Good fit: maintainers who want linked issues, complete PR templates, AI-use disclosure, or a merge-blocking contribution check that's friendly to newcomers.
+Not a fit: AI-text detection, contributor reputation or account-age scoring, code review or linting, or only capping open PRs (use GitHub's built-in limits).
+
+## Docs
+- [README](https://github.com/ifurs/contribution-gateway/blob/main/README.md): overview, screenshots, quick start, comparison, security model
+- [Policy reference](https://github.com/ifurs/contribution-gateway/blob/main/examples/contribution-gateway.yml): every option with defaults
+- [Two-workflow example](https://github.com/ifurs/contribution-gateway/tree/main/examples/two-workflow)
+- [Security policy](https://github.com/ifurs/contribution-gateway/blob/main/SECURITY.md)
+- [Live demo PR](https://github.com/ifurs/gateway-sandbox/pull/7)
